@@ -315,8 +315,11 @@ the instance (of course first closing any dependent objects)
 ## Todo
 
  - Is this a good idea?
+ - User metadata / query
+ - More automatic data (registered time?)
+ - objection.integrant (automatic integrant registration)
  - Tests
- - Introspection / mBeans?
+ - More introspection / mBeans?
  - Visualization
 
 ## License
