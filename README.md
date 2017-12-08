@@ -10,7 +10,8 @@ Should be usable on its own, or in addition to an existing library in the same v
 
 ## A bit about me
 
-I maintain big ass situated programs with loads of threads and connections and things,
+I maintain big ass situated programs with loads of threads and connections and things.
+
 There are threads everywhere I just can't control the number of threads.
 Sometimes I wake up in the morning and can't move for threads.
 
