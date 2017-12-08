@@ -51,7 +51,7 @@ depends on that connection pool, and a naive function start! that spins everythi
 ;; we will assume some private function to create a conn pool
 (defn- create-conn-pool*
   []
-  (Object.)
+  (Object.))
 
 (defn create-conn-pool
   []
@@ -72,7 +72,7 @@ depends on that connection pool, and a naive function start! that spins everythi
 (defn start!
  []
  (let [db (create-conn-pool)]
-   (spawn-thread db))
+   (spawn-thread db)))
 ```
 
 I'll rewrite these functions to use objection.
