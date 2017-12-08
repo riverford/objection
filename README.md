@@ -64,6 +64,7 @@ available on clojars.
 - Dynamic global registry of stateful objects and their dependency graph
 - Registry is mutated over time on any thread, no explicit single initialization
 - No notion of 'system' only object instances and the dependencies between them.
+- No start function definition needed.
 - Also provides a singleton model that provides repl convenience and a way to manage objects
   that you do not want to expose in your api. The core.async threadpool is an example of this.
 - No required protocols or boxing around managed objects, can be integrated into existing functions locally without changing function
