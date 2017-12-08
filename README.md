@@ -25,8 +25,6 @@ Sometimes I wake up in the morning and can't move for threads.
 * Mount
 * Integrant
 
-## Do they work? (kinda)
-
 Component and Integrant give you declarative dependency graphs of objects and some help with lifecycles of those objects.
 It is most useful for static systems where all components are known ahead of time and particpate in the same 'system'.
 
