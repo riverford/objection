@@ -27,10 +27,9 @@ component, integrant or mount.
 
 ## How is this different to mount
 
-- singletons are supported, but not the only model
-  can mix/match with explict object construction and arg passing styles.
 - no coupling to namespaces/vars to reference a singleton
 - lazy construction instead of explicit single start! fn.
+- singletons are supported, yet can mix/match with explicit object construction and arg passing styles.
 
 ## Warning
 
@@ -125,7 +124,7 @@ Now we can call start!
 
 Call `obj/status` to print information about the registered objects.
 
-```
+```clojure
 (obj/status)
 
 ;; 2 objects registered.
