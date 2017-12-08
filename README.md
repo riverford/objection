@@ -8,6 +8,46 @@ as connections, connection pools, threads, thread pools, servers, processes etc.
 Should be usable on its own, or in addition to an existing library in the same vain such as
 [component](https://github.com/stuartsierra/component), [integrant](https://github.com/weavejester/integrant) or [mount](https://github.com/tolitius/mount).
 
+## A bit about me
+
+I maintain big ass situated programs with loads of threads and connections and things,
+There are threads everywhere I just can't control the number of threads.
+Sometimes I wake up in the morning and can't move for threads.
+
+## The objection you WILL have
+
+> Component/Integrant/Mount already solves this problem, why not use that or make a PR or something
+
+## It's true, many people have tried this to solve this problem in the past
+
+* Component
+* Mount
+* Integrant
+
+## Do they work? (kinda)
+
+Component and Integrant give you declarative dependency graphs of objects and some help with lifecycles of those objects.
+It is most useful for static systems where all components are known ahead of time and particpate in the same 'system'.
+
+Mount is interesting but fundamentally seems to bank on 'singletons', and doesn't really attempt to solve the problem for
+non-singleton objects.
+
+## What do I want to achieve with objection?
+
+I would like a system that acknowledges that there is a global-ness to things like connections, processes and threads. They consume resources
+both internally and externally in ways that are not managed by the garbage collector.
+
+I would like my system to be 'live' and allow me to control the running state from the repl, and introspect what is going on. I never want to lose
+a reference to a channel and then be unable to stop it without closing the REPL.
+
+I would like to be able to construct new connections, processes etc at runtime, perhaps on multiple threads and have a library
+help me with dependency tracking and clean shut downs.
+
+I also think that global singletons are sometimes the right approach to state, in particular consider the mostly private details of the thread pools
+used by clojure, core.async, memoization caches and so on. But also do not think vars are the right container for these kinds of resource.
+
+I would prefer to be enabled to program with data instead of with objects when possible.
+
 ## Warning
 
 This is not yet production ready, I have put this on github in order to gather feedback and thoughts about this approach. As such it is not yet
@@ -33,7 +73,7 @@ available on clojars.
 ## How is this different to mount
 
 - no coupling to namespaces/vars to reference a singleton
-- lazy construction instead of explicit single start! fn.
+- lazy construction when needed instead of with some kind of start! fn.
 - singletons are supported, yet can mix/match with explicit object construction and arg passing styles.
 
 ## Usage
