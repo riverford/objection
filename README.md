@@ -177,7 +177,6 @@ You can use the `object` function, to return a registered instance.
 ```clojure
 (obj/object "4602ce42-d03f-4b30-98a2-e543b22b0976")
 ;; => #object[java.lang.Thread 0x4242a3db "Thread[Thread-14,5,main]"]
-
 ```
 
 This can often be quite useful at the repl.
@@ -217,7 +216,6 @@ use `defsingleton` to define a singleton.
   (obj/register
    (Executors/newFixedThreadPool 4)
    {:stopfn (fn [e] (println "closing thread pool") (.shutdown e))}))
-
 ```
 
 A singleton definition is not evaluated immediately. You use the function `singleton` to
@@ -232,7 +230,6 @@ return a singleton instance, at which point it will be constructed if necessary.
 ;; #object[java.util.concurrent.ThreadPoolExecutor
 ;;         0xa15f47f
 ;;        "java.util.concurrent.ThreadPoolExecutor@a15f47f[Running, pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0]"]
-
 ```
 
 Calling `singleton` again, will just return the instance.
@@ -243,7 +240,6 @@ Calling `singleton` again, will just return the instance.
 ;; #object[java.util.concurrent.ThreadPoolExecutor
 ;;         0xa15f47f
 ;;        "java.util.concurrent.ThreadPoolExecutor@a15f47f[Running, pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0]"]
-
 ```
 
 A constructed singleton is always registered, though if you can call `register` explicitly to
@@ -262,7 +258,6 @@ the instance (of course first closing any dependent objects)
 
 ;; closing threadpool
 ;; => nil
-
 ```
 
 ### Other stuff
@@ -273,7 +268,6 @@ the instance (of course first closing any dependent objects)
 - You can can call `id-seq` to get a sequence of all the registered ids.
 - You can call `depend`/`undepend`/`alias`/`unalias` to introduce dependencies and aliases
   after an instance is registered.
-- re-registering an instance does not reassign an id, but does allow you to add additional aliases and dependencies.
 - `need` can be used as a kind of ensure/assert that throws if an instance is not available. e.g
   `(need ::threadpool)` would return my thread pool if an object is registered with that alias, or a singleton exists
   with that key.
