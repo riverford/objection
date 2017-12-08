@@ -43,7 +43,7 @@ I would like to be able to construct new connections, processes etc at runtime, 
 help me with dependency tracking and clean shut downs.
 
 I also think that global singletons are sometimes the right approach to state, in particular consider the mostly private details of the thread pools
-used by clojure, core.async, memoization caches and so on. But also do not think vars are the right container for these kinds of resource.
+used by clojure, core.async, memoization caches and so on. But also do not think vars are always the right container for these kinds of resource.
 
 I would prefer to be enabled to program with data instead of with objects when possible.
 
