@@ -6,7 +6,12 @@ objection is about managing graphs of objects that acquire resources globally su
 as connections, connection pools, threads, thread pools, servers, processes etc.
 
 Should be usable on its own, or in addition to an existing library in the same vain such as
-component, integrant or mount.
+[component](https://github.com/stuartsierra/component), [integrant](https://github.com/weavejester/integrant) or [mount](https://github.com/tolitius/mount).
+
+## Warning
+
+This is not yet production ready, I have put this on github in order to gather feedback and thoughts about this approach. As such it is not yet
+available on clojars.
 
 ## What does it do
 
@@ -16,10 +21,9 @@ component, integrant or mount.
 
 ## How is this different to component / integrant
 
-- Dynamic global registry of stateful objects and their depedency graph
+- Dynamic global registry of stateful objects and their dependency graph
 - Registry is mutated over time on any thread, no explicit single initialization
-- No notion of 'system' only object instances and the depedencies between them.
-- Can be introduced gradually into an applications system without too much friction.
+- No notion of 'system' only object instances and the dependencies between them.
 - Also provides a singleton model that provides repl convenience and a way to manage objects
   that you do not want to expose in your api. The core.async threadpool is an example of this.
 - No required protocols or boxing around managed objects, can be integrated into existing functions locally without changing function
@@ -30,11 +34,6 @@ component, integrant or mount.
 - no coupling to namespaces/vars to reference a singleton
 - lazy construction instead of explicit single start! fn.
 - singletons are supported, yet can mix/match with explicit object construction and arg passing styles.
-
-## Warning
-
-This is not yet production ready, I have put this on github in order to gather feedback and thoughts about this approach. As such it is not yet
-available on clojars.
 
 ## Usage
 
@@ -52,7 +51,7 @@ depends on that connection pool, and a naive function start! that spins everythi
 ;; we will assume some private function to create a conn pool
 (defn- create-conn-pool*
   []
-  ...)
+  (Object.)
 
 (defn create-conn-pool
   []
@@ -76,7 +75,7 @@ depends on that connection pool, and a naive function start! that spins everythi
    (spawn-thread db))
 ```
 
-I'll rewrite these function to use objection.
+I'll rewrite these functions to use objection.
 
 ```clojure
 
@@ -111,10 +110,11 @@ I'll rewrite these function to use objection.
 ```
 
 Instead of just returning the connection pool, we first register it. We pass
-a name and a :stopfn. `register` returns whatever is registered immediately, so a caller
+a name and a `:stopfn`. `register` returns the object, so a caller
 would just get the connection pool as it did before.
 
-Similarly we register the thread.
+Similarly we register the thread, we use the key `:deps` to tell objection that
+the thread is dependent on the db.
 
 Now we can call start!
 
@@ -192,7 +192,7 @@ An object can have many aliases, but each alias can only be assigned to one obje
 ;; => #object[java.lang.Thread 0x4242a3db "Thread[Thread-14,5,main]"]
 ```
 
-n.b You can also pass an alias as `:alias` on when calling `register`, or multiple aliases with `:aliases`.
+n.b You can also pass an alias via `:alias` when calling `register`, or multiple aliases with `:aliases`.
 
 Most functions can take an id, alias or object instance interchangeably, e.g
 
@@ -247,7 +247,7 @@ Calling `singleton` again, will just return the instance.
 ```
 
 A constructed singleton is always registered, though if you can call `register` explicitly to
-pass extra opts (such as :stopfn).
+pass extra opts (such as `:stopfn`).
 
 If you redefine the singleton, e.g to increase the number of threads in the pool. objection will automatically `stop!`
 the instance (of course first closing any dependent objects)
@@ -267,8 +267,8 @@ the instance (of course first closing any dependent objects)
 
 ### Other stuff
 
-- You can implement IAutoStoppable if you don't want to provide a :stopfn, objection knows about java.lang.AutoCloseable already.
-- You can get the objection id of an instance/alias via `(id x)`
+- You can implement `IAutoStoppable` if you don't want to provide a `:stopfn`, objection knows about `java.lang.AutoCloseable` already.
+- You can get the objection id of an instance/alias via `id`
 - You can get info such as name about an instance via `describe`
 - You can can call `id-seq` to get a sequence of all the registered ids.
 - You can call `depend`/`undepend`/`alias`/`unalias` to introduce dependencies and aliases
