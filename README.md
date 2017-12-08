@@ -17,7 +17,7 @@ available on clojars.
 
 - Makes sure you have the ability to stop/close/dispose of objects in the correct order.
 - Gives you a registry that you can use to look up registered instances of objects.
-- Provides you tools for [singleton](#singleton) objects.
+- Provides you tools for [singleton](#singletons) objects.
 - You can stop things even if you've lost the pointer to them!!!
 
 ## How is this different to component / integrant
