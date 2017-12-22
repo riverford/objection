@@ -196,9 +196,11 @@
 
 (defn- do-undepend
   [st x dependency]
-  (when-some [id (get-id st x)]
-    (when-some [id2 (get-id st dependency)]
-      (update st :g dep/remove-edge id id2))))
+  (if-some [id (get-id st x)]
+    (if-some [id2 (get-id st dependency)]
+      (update st :g dep/remove-edge id id2)
+      st)
+    st))
 
 (defn dependencies
   "Returns the ids of dependencies of `x`."
@@ -256,39 +258,56 @@
   "Runs the stopfn of `x` or the type specific AutoStoppable impl. e.g on AutoCloseable objects .close will be called.
 
   Removes the object from the registry."
+  ([x] (stop! x {}))
+  ([x opts]
+    ;; what to do on error? re-register?
+   (when x
+     (when-some [lock (lock-for-object x)]
+       (try
+         (.lock lock)
+         (run! stop! (dependents x))
+         (let [st @reg
+               id (get-id st x)
+               stopfn (-> st :meta (get id) :stopfn)
+               obj (-> st :id (get id))]
+           (if (:force? opts)
+             (try
+               (if (some? stopfn)
+                 (stopfn obj)
+                 (-stop! obj))
+               (catch InterruptedException e
+                 (throw e))
+               (catch Throwable e
+                 ;; swallow error
+                 ))
+             (if (some? stopfn)
+               (stopfn obj)
+               (-stop! obj)))
+           (swap! reg (fn [st]
+                        (if-some [id (get-id st x)]
+                          (let [obj (-> st :id (get id))
+                                meta (-> st :meta (get id))
+                                aliases (:aliases meta)
+                                dependents (dep/immediate-dependents (:g st) id)
+                                dependencies (dep/immediate-dependencies (:g st) id)]
+                            (as->
+                              st st
+                              (update st :id dissoc id)
+                              (update st :obj dissoc (util/identity-box obj))
+                              (update st :meta dissoc id)
+                              (update st :lock dissoc id)
+                              (update st :g dep/remove-all id)
+                              (reduce #(update %1 :alias dissoc %2) st (cons id aliases))))
+                          st)))
+           nil)
+         (finally
+           (.unlock lock)))))))
+
+(defn kill!
+  "Like `stop!` but will still continue instead of throwing if stopping the object
+  throws an error."
   [x]
-  ;; what to do on error? re-register?
-  (when x
-    (when-some [lock (lock-for-object x)]
-      (try
-        (.lock lock)
-        (run! stop! (dependents x))
-        (let [st @reg
-              id (get-id st x)
-              stopfn (-> st :meta (get id) :stopfn)
-              obj (-> st :id (get id))]
-          (if (some? stopfn)
-            (stopfn obj)
-            (-stop! obj))
-          (swap! reg (fn [st]
-                       (if-some [id (get-id st x)]
-                         (let [obj (-> st :id (get id))
-                               meta (-> st :meta (get id))
-                               aliases (:aliases meta)
-                               dependents (dep/immediate-dependents (:g st) id)
-                               dependencies (dep/immediate-dependencies (:g st) id)]
-                           (as->
-                             st st
-                             (update st :id dissoc id)
-                             (update st :obj dissoc (util/identity-box obj))
-                             (update st :meta dissoc id)
-                             (update st :lock dissoc id)
-                             (update st :g dep/remove-all id)
-                             (reduce #(update %1 :alias dissoc %2) st (cons id aliases))))
-                         st)))
-          nil)
-        (finally
-          (.unlock lock))))))
+  (stop! x {:force? true}))
 
 (defn stop-all!
   "Stops all current registered objects."

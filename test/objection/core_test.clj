@@ -4,6 +4,28 @@
   (:import (java.lang AutoCloseable)
            (java.util UUID)))
 
+(deftest test-register
+  (obj/stop-all!)
+
+  (is (thrown? Throwable (obj/register nil)))
+  (is (thrown? Throwable (obj/register false)))
+
+  (let [o (Object.)]
+    (is (identical? o (obj/register o))))
+
+  (let [a (obj/register (Object.) {:alias ::a})
+        b (obj/register (Object.) {:alias ::b
+                                   :deps [a]
+                                   :aliases [::foo]})]
+    (is (identical? a (obj/object ::a)))
+    (is (identical? b (obj/object ::b)))
+    (is (identical? b (obj/object ::foo)))
+
+    (is (obj/depends? b a))
+    (is (obj/depends? ::b ::a)))
+
+  (obj/stop-all!))
+
 (deftest test-id
   (obj/stop-all!)
   (is (nil? (obj/id nil)))
@@ -118,14 +140,20 @@
 
   (let [a (Object.)
         b (Object.)
-        c (Object.)]
+        c (Object.)
+        d (Object.)]
     (obj/register a)
     (is (thrown? Throwable (obj/depend a b)))
     (obj/register b)
     (obj/register c)
+    (obj/register d)
+
+    (is (= #{} (obj/dependents b)))
+    (is (= #{} (obj/dependencies a)))
 
     (is (nil? (obj/depend a b)))
     (is (nil? (obj/depend b c)))
+    (is (nil? (obj/depend d c)))
 
     (->> "redepending is fine"
          (is (nil? (obj/depend a b))))
@@ -133,6 +161,7 @@
     (->> "cycles fail"
          (is (thrown? Throwable (obj/depend c a))))
 
+    (is (false? (obj/depends? c a)))
     (is (false? (obj/depends? b a)))
     (is (false? (obj/depends? nil nil)))
     (is (false? (obj/depends? a (Object.))))
@@ -140,15 +169,168 @@
     (is (obj/depends? a b))
     (is (obj/depends? b c))
     (is (obj/depends? a c))
+    (is (obj/depends? d c))
 
     (obj/alias a ::a)
     (obj/alias b ::b)
     (obj/alias c ::c)
+    (obj/alias d ::d)
 
     (is (obj/depends? ::a ::b))
     (is (obj/depends? ::a ::c))
+    (is (obj/depends? ::d ::c))
+
+    (is (= (obj/dependencies ::a)
+           (obj/dependencies a)
+           (obj/dependencies (obj/id a))
+           #{(obj/id b)}))
+
+    (is (= (obj/dependents ::b)
+           (obj/dependents b)
+           (obj/dependents (obj/id b))
+           #{(obj/id a)}))
 
     (obj/stop! c)
     (is (empty? (obj/id-seq))))
+
+  (obj/stop-all!))
+
+(deftest test-undepend
+  (obj/stop-all!)
+
+  (is (nil? (obj/undepend nil nil)))
+  (is (nil? (obj/undepend (Object.) nil)))
+  (is (nil? (obj/undepend nil (Object.))))
+  (is (nil? (obj/undepend (Object.) (Object.))))
+
+  (let [a (obj/register (Object.))
+        b (obj/register (Object.))
+        c (obj/register (Object.))]
+
+    (obj/depend a b)
+    (obj/depend b c)
+
+    (is (nil? (obj/undepend b c)))
+    (is (false? (obj/depends? b c)))
+    (is (false? (obj/depends? a c)))
+    (is (obj/depends? a b))
+
+    (is (= #{} (obj/dependencies b)))
+
+    (obj/stop! c)
+    (is (= (hash-set
+             (obj/id a)
+             (obj/id b))
+           (set (obj/id-seq)))))
+
+  (obj/stop-all!))
+
+(deftest test-stop
+  (obj/stop-all!)
+
+  (let [stop-counter (atom 0)
+        o (obj/register
+            (Object.)
+            {:stopfn (fn [_] (swap! stop-counter inc))})
+        id (obj/id o)]
+
+
+    (is (nil? (obj/stop! o)))
+    (is (= 1 @stop-counter))
+    (is (nil? (obj/stop! o)))
+    (is (= 1 @stop-counter))
+    (is (nil? (obj/stop! id)))
+    (is (= 1 @stop-counter)))
+
+  (let [stop-counter (atom 0)
+        o (obj/register
+            (reify obj/IAutoStoppable
+              (-stop! [this]
+                (swap! stop-counter inc))))
+        id (obj/id o)]
+
+
+    (is (nil? (obj/stop! o)))
+    (is (= 1 @stop-counter))
+    (is (nil? (obj/stop! o)))
+    (is (= 1 @stop-counter))
+    (is (nil? (obj/stop! id)))
+    (is (= 1 @stop-counter)))
+
+  (let [stop-counter (atom 0)
+        o (obj/register
+            (reify AutoCloseable
+              (close [this]
+                (swap! stop-counter inc))))
+        id (obj/id o)]
+
+
+    (is (nil? (obj/stop! o)))
+    (is (= 1 @stop-counter))
+    (is (nil? (obj/stop! o)))
+    (is (= 1 @stop-counter))
+    (is (nil? (obj/stop! id)))
+    (is (= 1 @stop-counter)))
+
+  (obj/stop-all!))
+
+(deftest test-stop-conc
+  (obj/stop-all!)
+
+  (let [stop-counter (atom 0)
+        objects (vec (for [i (range 32)]
+                       (obj/register
+                         (Object.)
+                         {:stopfn (fn [_]
+                                    (Thread/sleep 1000)
+                                    (swap! stop-counter inc))})))]
+    (mapv deref (for [o (concat (shuffle (vec objects))
+                                (shuffle (vec objects)))]
+                  (future
+                    (obj/stop! o))))
+
+    (->> "each object is stopped at exactly once"
+         (is (= (count objects) @stop-counter))))
+
+  (let [stop-counter (atom 0)
+        deps (vec (for [i (range 16)]
+                    (obj/register
+                      (Object.)
+                      {:stopfn (fn [_]
+                                 (Thread/sleep 1000)
+                                 (swap! stop-counter inc))})))
+        objects (vec (for [i (range 16)]
+                       (obj/register
+                         (Object.)
+                         {:deps (take 3 (shuffle deps))
+                          :stopfn (fn [_]
+                                    (Thread/sleep 1000)
+                                    (swap! stop-counter inc))})))]
+
+    (mapv deref (for [o (shuffle (concat deps objects deps))]
+                  (future
+                    (obj/stop! o))))
+
+    (->> "each object is stopped at exactly once"
+         (is (= (+ (count objects)
+                   (count deps)) @stop-counter))))
+
+  (is (empty? (obj/id-seq))))
+
+(obj/defsingleton ::test-need-singleton
+  (Object.))
+
+(deftest test-need
+  (obj/stop-all!)
+
+  (is (thrown? Throwable (obj/need nil)))
+  (is (thrown? Throwable (obj/need (Object.))))
+
+  (let [o (obj/register (Object.) {:alias ::o})]
+    (is (identical? o (obj/need ::o)))
+    (is (identical? o (obj/need o "foo"))))
+
+  (is (identical? (obj/singleton ::test-need-singleton)
+                  (obj/need ::test-need-singleton)))
 
   (obj/stop-all!))
