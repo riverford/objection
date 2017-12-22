@@ -102,13 +102,14 @@ depends on that connection pool, and a naive function start! that spins everythi
   [db]
   (doto
     (Thread. (fn []
-               (while true
+               (while (not (.isInterrupted (Thread/currentThread)))
                  (try
                    (println "Working with db")
                    (Thread/sleep 5000)
                    (catch InterruptedException e
-                     (println "Thread interrupted"))))))
-    (.start)))
+                    (println "Thread interrupted")
+                    (.interrupt (Thread/currentThread)))))))
+        (.start)))
 
 (defn start!
  []
@@ -125,20 +126,21 @@ I'll rewrite these functions to use objection.
   (obj/register
     (create-conn-pool*)
     {:name "Connection pool"
-     :stopfn (fn [cp] (println "closing connection pool") (.shutdown cp))}))
+     :stopfn (fn [cp] (println "closing connection pool") (.close cp)}))
 
 (defn spawn-thread
   [db]
   (obj/register
     (doto
       (Thread. (fn []
-                 (while true
-                   (try
-                     (println "Working with db")
-                     (Thread/sleep 5000)
-                     (catch InterruptedException e
-                       (println "Thread interrupted"))))))
-      (.start))
+                 (while (not (.isInterrupted (Thread/currentThread)))
+                  (try
+                   (println "Working with db")
+                   (Thread/sleep 5000)
+                   (catch InterruptedException e
+                     (println "Thread interrupted")
+                     (.interrupt (Thread/currentThread)))))))
+          (.start))
     {:name "Thread doing stuff"
      :stopfn (fn [t] (println "closing thread") (.interrupt t) (.join t))
      :deps [db]}))

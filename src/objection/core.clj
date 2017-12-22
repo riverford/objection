@@ -39,7 +39,8 @@
           x
           (let [gt (subseq id > x)
                 kseq (->> gt seq (map key))]
-            (when (str/starts-with? (first kseq) x)
+            (when (and (seq kseq)
+                       (str/starts-with? (first kseq) x))
               (if (and (next kseq)
                        (str/starts-with? (second kseq) x))
                 nil
@@ -48,7 +49,7 @@
         (get-id st a))
       (obj (util/identity-box x)))))
 
-(defn- ^Lock object-lock
+(defn- ^Lock lock-for-object
   [x]
   (let [st @reg
         id (get-id st x)]
@@ -141,7 +142,7 @@
   [opts f]
   (let [deps (:deps opts)
         locks (mapv (fn [dep]
-                      (or (object-lock dep)
+                      (or (lock-for-object dep)
                           (throw (ex-info "Dependency is not a registered object..." {:error-type :unregistered-dependency}))))
                     deps)]
     (doseq [lock locks]
@@ -211,14 +212,14 @@
   (let [st @reg]
     (dep/immediate-dependents (:g st) (get-id st x))))
 
-(defn dependent?
+(defn depends?
   "Is `x` dependent on dependency?"
   [x dependency]
   (boolean
     (let [st @reg]
       (when-some [id1 (get-id st x)]
         (when-some [id2 (get-id st dependency)]
-          (dep/dependent? (:g st) id1 id2))))))
+          (dep/depends? (:g st) id1 id2))))))
 
 (defn depend
   "Makes `x` dependent on `dependency`, both can be registered object instances, aliases or ids.
@@ -227,12 +228,12 @@
   ;; makes sure you cannot possible cause a deadlock
   ;; by accidently depend a -> b , depend b -> a on different threads.
   (locking global-lock
-    (if-some [dep-lock (object-lock dependency)]
+    (if-some [dep-lock (lock-for-object dependency)]
       (try
         (.lock dep-lock)
-        (if (dependent? dependency x)
+        (if (depends? dependency x)
           (throw (ex-info "Dependency cycle detected" {:error-type :dependency-cycle}))
-          (if-some [lock (object-lock x)]
+          (if-some [lock (lock-for-object x)]
             (try
               (.lock lock)
               (swap! reg do-depend x dependency)
@@ -258,7 +259,7 @@
   [x]
   ;; what to do on error? re-register?
   (when x
-    (when-some [lock (object-lock x)]
+    (when-some [lock (lock-for-object x)]
       (try
         (.lock lock)
         (run! stop! (dependents x))
