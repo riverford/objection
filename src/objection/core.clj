@@ -19,7 +19,9 @@
            (clojure.lang IDeref IFn)
            (java.util.concurrent.locks ReentrantLock Lock)))
 
-(defonce ^:private global-lock (Object.))
+;; Used sparingly when granular locks would be problematic, such as on depend calls.
+(defonce ^:private global-lock
+  (Object.))
 
 (defonce ^:private reg
   (atom {:g (dep/graph)
@@ -228,7 +230,7 @@
   When you `(stop! dependency)` objection will make sure that `x` is stopped first."
   [x dependency]
   ;; makes sure you cannot possible cause a deadlock
-  ;; by accidently depend a -> b , depend b -> a on different threads.
+  ;; by accident depend a -> b , depend b -> a on different threads.
   (locking global-lock
     (if-some [dep-lock (lock-for-object dependency)]
       (try
@@ -341,7 +343,9 @@
 
 (defn singleton
   "Like (object `k`) but if a singleton is registered under the key `k`, it will be constructed if necessary
-  in order to return the instance."
+  in order to return the instance.
+
+  Singleton will always return an instance if one has been defined."
   [k]
   (or (object k)
       (when-some [{:keys [f lock]} (get @singleton-registry k)]
@@ -368,12 +372,18 @@
        (throw (IllegalArgumentException. (str (or error-message "Not a registered object.")))))))
 
 (defn put-singleton*
-  [k f]
+  [k f meta]
   (stop! k)
   (swap! singleton-registry (fn [m] (assoc m k {:f f
+                                                :k k
+                                                :meta meta
                                                 :lock (or (:lock (get m k))
                                                           (ReentrantLock.))})))
   nil)
+
+(defn singleton-keys
+  []
+  (keys @singleton-registry))
 
 (defmacro defsingleton
   "Defines a singleton that can be returned via (singleton k), if an instance already exists, it is returned - else the body is run
@@ -385,28 +395,30 @@
 
   Singletons are always registered and they also receive an alias of the key used in the definition.
 
-  To introduce dependencies, stopfn, additional aliases etc, you can register the object in the body
+  To introduce dependencies, stopfn, additional aliases etc, you can register or construct the object in the body
   of the singleton in the normal way."
   [k & body]
   `(do
      (put-singleton* ~k (fn []
                           (register
                             (do ~@body)
-                            {:aliases [~k]})))))
+                            {:aliases [~k]})) {:ns (quote ~(symbol (str *ns*)))})))
 
 (defn describe
   "Returns information about `x`, which can be a registered object, alias or id."
   [x]
   (let [st @reg
+        sreg @singleton-registry
         id (get-id st x)
         meta (-> st :meta (get id))
         aliases (get meta :aliases)
-        singleton-key (or (some (fn [a] (when (contains? @singleton-registry a) a)) aliases)
-                          (when (contains? @singleton-registry x) x))]
+        singleton-key (or (some (fn [a] (when (contains? sreg a) a)) aliases)
+                          (when (contains? sreg x) x))]
     (merge
       {:registered? (some? id)}
       (when singleton-key
-        {:singleton-key singleton-key})
+        {:singleton-key singleton-key
+         :singleton-ns (:ns (:meta (get sreg singleton-key)))})
       (select-keys meta [:id :name :data :aliases])
       {:deps (dep/immediate-dependencies (:g st) id)
        :dependents (dep/immediate-dependents (:g st) id)})))
