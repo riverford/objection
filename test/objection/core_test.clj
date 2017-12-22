@@ -47,6 +47,10 @@
     (->> "id should be present in id seq"
          (is (contains? (set (obj/id-seq)) (obj/id o))))
 
+    (->> "can get id by prefix"
+         (is (= (obj/id o)
+                (obj/id (subs (obj/id o) 0 5)))))
+
     (let [oldid (obj/id o)]
       (obj/register o)
       (->> "reregistering does not change id"
@@ -282,14 +286,14 @@
                        (obj/register
                          (Object.)
                          {:stopfn (fn [_]
-                                    (Thread/sleep 1000)
+                                    (Thread/sleep (min 10 (rand-int 100)))
                                     (swap! stop-counter inc))})))]
     (mapv deref (for [o (concat (shuffle (vec objects))
                                 (shuffle (vec objects)))]
                   (future
                     (obj/stop! o))))
 
-    (->> "each object is stopped at exactly once"
+    (->> "each object is stopped exactly once"
          (is (= (count objects) @stop-counter))))
 
   (let [stop-counter (atom 0)
@@ -297,21 +301,21 @@
                     (obj/register
                       (Object.)
                       {:stopfn (fn [_]
-                                 (Thread/sleep 1000)
+                                 (Thread/sleep (min 10 (rand-int 100)))
                                  (swap! stop-counter inc))})))
         objects (vec (for [i (range 16)]
                        (obj/register
                          (Object.)
                          {:deps (take 3 (shuffle deps))
                           :stopfn (fn [_]
-                                    (Thread/sleep 1000)
+                                    (Thread/sleep (min 10 (rand-int 100)))
                                     (swap! stop-counter inc))})))]
 
     (mapv deref (for [o (shuffle (concat deps objects deps))]
                   (future
                     (obj/stop! o))))
 
-    (->> "each object is stopped at exactly once"
+    (->> "each object is stopped exactly once"
          (is (= (+ (count objects)
                    (count deps)) @stop-counter))))
 
@@ -334,3 +338,48 @@
                   (obj/need ::test-need-singleton)))
 
   (obj/stop-all!))
+
+(obj/defsingleton ::test-singleton
+  (Thread/sleep (min 10 (rand-int 100)))
+  (Object.))
+
+(deftest test-singleton
+  (obj/stop-all!)
+
+  (let [o (obj/singleton ::test-singleton)]
+    (is (some? o))
+    (is (identical? o (obj/singleton ::test-singleton)))
+    (is (identical? o (obj/need ::test-singleton)))
+    (is (identical? o (obj/object ::test-singleton)))
+    (is (identical? o (obj/object o)))
+    (is (identical? (obj/id o) (obj/id ::test-singleton))))
+
+  (obj/stop! ::test-singleton)
+  (is (nil? (obj/object ::test-singleton)))
+
+  (let [res-atom (atom [])]
+    (dotimes [x 100]
+      (swap! res-atom conj
+             (future
+               (Thread/sleep (min 10 (rand-int 100)))
+               (obj/singleton ::test-singleton))))
+
+    (->> "singleton always returns the same instance under conc construction"
+         (is (= 1 (count (set (mapv deref @res-atom)))))))
+
+  (let [res-atom (atom [])]
+    (dotimes [x 100]
+      (future
+        (Thread/sleep (min 10 (rand-int 100)))
+        (obj/stop! ::test-singleton))
+      (swap! res-atom conj
+             (future
+               (Thread/sleep (min 10 (rand-int 100)))
+               (obj/singleton ::test-singleton))))
+
+    (->> "singleton always returns an instance"
+         (is (every? some? (mapv deref @res-atom)))))
+
+  (obj/stop-all!))
+
+

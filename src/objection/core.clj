@@ -254,6 +254,8 @@
   (swap! reg do-undepend x dependency)
   nil)
 
+(declare lock-for-singleton describe)
+
 (defn stop!
   "Runs the stopfn of `x` or the type specific AutoStoppable impl. e.g on AutoCloseable objects .close will be called.
 
@@ -265,41 +267,50 @@
      (when-some [lock (lock-for-object x)]
        (try
          (.lock lock)
-         (run! stop! (dependents x))
-         (let [st @reg
-               id (get-id st x)
-               stopfn (-> st :meta (get id) :stopfn)
-               obj (-> st :id (get id))]
-           (if (:force? opts)
+         (if-some [singleton-key (when-not (::singleton-locked? opts)
+                                   (:singleton-key (describe x)))]
+           (let [slock (lock-for-singleton singleton-key)]
              (try
-               (if (some? stopfn)
-                 (stopfn obj)
-                 (-stop! obj))
-               (catch InterruptedException e
-                 (throw e))
-               (catch Throwable e
-                 ;; swallow error
-                 ))
-             (if (some? stopfn)
-               (stopfn obj)
-               (-stop! obj)))
-           (swap! reg (fn [st]
-                        (if-some [id (get-id st x)]
-                          (let [obj (-> st :id (get id))
-                                meta (-> st :meta (get id))
-                                aliases (:aliases meta)
-                                dependents (dep/immediate-dependents (:g st) id)
-                                dependencies (dep/immediate-dependencies (:g st) id)]
-                            (as->
-                              st st
-                              (update st :id dissoc id)
-                              (update st :obj dissoc (util/identity-box obj))
-                              (update st :meta dissoc id)
-                              (update st :lock dissoc id)
-                              (update st :g dep/remove-all id)
-                              (reduce #(update %1 :alias dissoc %2) st (cons id aliases))))
-                          st)))
-           nil)
+               (.lock ^Lock slock)
+               (stop! x (assoc opts ::singleton-locked? true))
+               (finally
+                 (.unlock ^Lock slock))))
+           (do
+             (run! stop! (dependents x))
+             (let [st @reg
+                   id (get-id st x)
+                   stopfn (-> st :meta (get id) :stopfn)
+                   obj (-> st :id (get id))]
+               (if (:force? opts)
+                 (try
+                   (if (some? stopfn)
+                     (stopfn obj)
+                     (-stop! obj))
+                   (catch InterruptedException e
+                     (throw e))
+                   (catch Throwable e
+                     ;; swallow error
+                     ))
+                 (if (some? stopfn)
+                   (stopfn obj)
+                   (-stop! obj)))
+               (swap! reg (fn [st]
+                            (if-some [id (get-id st x)]
+                              (let [obj (-> st :id (get id))
+                                    meta (-> st :meta (get id))
+                                    aliases (:aliases meta)
+                                    dependents (dep/immediate-dependents (:g st) id)
+                                    dependencies (dep/immediate-dependencies (:g st) id)]
+                                (as->
+                                  st st
+                                  (update st :id dissoc id)
+                                  (update st :obj dissoc (util/identity-box obj))
+                                  (update st :meta dissoc id)
+                                  (update st :lock dissoc id)
+                                  (update st :g dep/remove-all id)
+                                  (reduce #(update %1 :alias dissoc %2) st (cons id aliases))))
+                              st)))
+               nil)))
          (finally
            (.unlock lock)))))))
 
@@ -324,20 +335,27 @@
 
 (defonce ^:private singleton-registry (atom {}))
 
+(defn- lock-for-singleton
+  [k]
+  (-> @singleton-registry (get k) :lock))
+
 (defn singleton
   "Like (object `k`) but if a singleton is registered under the key `k`, it will be constructed if necessary
   in order to return the instance."
   [k]
   (or (object k)
-      (when-some [ctor (get @singleton-registry k)]
-        (locking k
+      (when-some [{:keys [f lock]} (get @singleton-registry k)]
+        (.lock ^Lock lock)
+        (try
           (or (object k)
-              (let [ret (ctor)]
+              (let [ret (f)]
                 ;; object may already be registered
                 ;; but thats ok
                 (register ret {:aliases [k]})
                 (alias ret k)
-                ret))))))
+                ret))
+          (finally
+            (.unlock ^Lock lock))))))
 
 (defn need
   "Tries to resolve `x` to a registered object, or singleton - throws an exception with the message if not possible."
@@ -353,7 +371,8 @@
   [k f]
   (locking k
     (stop! k)
-    (swap! singleton-registry assoc k f)
+    (swap! singleton-registry assoc k {:f f
+                                       :lock (ReentrantLock.)})
     nil))
 
 (defmacro defsingleton
