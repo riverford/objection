@@ -369,11 +369,11 @@
 
 (defn put-singleton*
   [k f]
-  (locking k
-    (stop! k)
-    (swap! singleton-registry assoc k {:f f
-                                       :lock (ReentrantLock.)})
-    nil))
+  (stop! k)
+  (swap! singleton-registry (fn [m] (assoc m k {:f f
+                                                :lock (or (:lock (get m k))
+                                                          (ReentrantLock.))})))
+  nil)
 
 (defmacro defsingleton
   "Defines a singleton that can be returned via (singleton k), if an instance already exists, it is returned - else the body is run
