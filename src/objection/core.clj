@@ -1,30 +1,58 @@
 (ns objection.core
-  "Objection helps you manage graphs of stateful objects that acquire resources.
+  "Objection helps you manage graphs of stateful objects that acquire resources that are not
+  managed by the garbage collector.
 
-  It is good for things like, connection pools, threads, thread pools, queues, channels etc."
+  It is good for things like, connection pools, threads, thread pools, queues, channels etc.
+
+  Register objects and dependencies via `register`, `construct`.
+
+  Inspect objects with `describe`, `id`, `data`, `id-seq`, `status`.
+
+  Define singletons with `defsingleton` and resolve them with `singleton`."
   (:require [com.stuartsierra.dependency :as dep]
-            [objection.util :as util])
+            [objection.util :as util]
+            [clojure.string :as str])
   (:refer-clojure :exclude [alias])
-  (:import (java.util UUID IdentityHashMap)
+  (:import (java.util UUID)
            (java.lang AutoCloseable)
            (java.util.concurrent ConcurrentHashMap)
-           (clojure.lang IDeref IFn)))
+           (clojure.lang IDeref IFn)
+           (java.util.concurrent.locks ReentrantLock Lock)))
+
+(defonce ^:private global-lock (Object.))
 
 (defonce ^:private reg
   (atom {:g (dep/graph)
-         :id {}
+         :idhash {}
+         :id (sorted-map)
          :meta {}
          :obj {}
+         :lock {}
          :alias {}}))
 
 (defn- get-id
   [st x]
   (let [{:keys [id obj singletons alias]} st]
-    (if (contains? id x)
-      x
-      (or (when-some [a (alias x)]
-            (get-id st a))
-          (obj (util/identity-box x))))))
+    (or
+      (when (string? x)
+        (if (contains? id x)
+          x
+          (let [gt (subseq id > x)
+                kseq (->> gt seq (map key))]
+            (when (str/starts-with? (first kseq) x)
+              (if (and (next kseq)
+                       (str/starts-with? (second kseq) x))
+                nil
+                (first kseq))))))
+      (when-some [a (alias x)]
+        (get-id st a))
+      (obj (util/identity-box x)))))
+
+(defn- ^Lock object-lock
+  [x]
+  (let [st @reg
+        id (get-id st x)]
+    (-> st :lock (get id))))
 
 (defn id
   "Returns the id of the object, the id was assigned
@@ -33,7 +61,7 @@
   (get-id @reg x))
 
 (defn object
-  "Returns a registered object, can pass either an id, alias or object instance."
+  "Returns a registered object, can pass either an id, id prefix, alias or object instance."
   [x]
   (let [st @reg
         id (get-id st x)]
@@ -42,13 +70,18 @@
 
 (defn- do-alias
   [st x name]
-  (if (nil? (get-id st x))
-    (throw (Exception. "Not a registered object..."))
-    (let [existing-id (-> st :alias (get name))]
-      (if (or (nil? existing-id) (= (get-id  st x) existing-id))
-        (-> (assoc-in st [:alias name] (get-id st x))
-            (update-in [:meta (get-id st x) :aliases] (fnil conj #{}) name))
-        (throw (Exception. "Not allowed to reuse existing alias for different object."))))))
+  (let [id (get-id st x)]
+    (if (nil? id)
+      (throw (ex-info "Not a registered object..." {:error-type :unregistered-object
+                                                    :op :alias}))
+      (let [existing-id (-> st :alias (get name))]
+        (if (or (nil? existing-id) (= id existing-id))
+          (-> (assoc-in st [:alias name] id)
+              (update-in [:meta id :aliases] (fnil conj #{}) name))
+          (throw (ex-info "Not allowed to reuse existing alias for different object." {:error-type :alias-reuse
+                                                                                       :alias name
+                                                                                       :assigned-to existing-id
+                                                                                       :target id})))))))
 
 (declare do-depend)
 
@@ -60,7 +93,8 @@
       (assoc-in st [:id id] obj)
       (assoc-in st [:obj (util/identity-box obj)] id)
       (assoc-in st [:alias id] id)
-      (update-in st [:meta id] merge (select-keys opts [:name :stopfn]))
+      (assoc-in st [:lock id] (ReentrantLock.))
+      (update-in st [:meta id] merge {:id id} (select-keys opts [:name :stopfn :data]))
       (reduce #(do-alias %1 id %2) st (if (contains? opts :alias)
                                         (cons (:alias opts) (:aliases opts))
                                         (:aliases opts)))
@@ -89,18 +123,40 @@
 
   `:name` - a name to use for the object, doesn't have to be unique.
   `:aliases` - a sequence of aliases to apply to the object
+  `:data` - user supplied metadata about the object
   `:deps` - a sequence of dependencies, supports passing objection ids, aliases or registered objects.
-  `:stopfn` - a function of the object that performs any shutdown logic.
-  "
+  `:stopfn` - a function of the object that performs any shutdown logic."
   ([obj] (register obj {}))
   ([obj opts]
 
    (assert (some? obj))
    (assert (not (false? obj)))
 
-   (let [id (str (UUID/randomUUID))]
-     (swap! reg do-register id obj opts)
-     obj)))
+   (swap! reg do-register (str (UUID/randomUUID)) obj opts)
+   obj))
+
+(declare singleton)
+
+(defn construct-call
+  [opts f]
+  (let [deps (:deps opts)
+        locks (mapv (fn [dep]
+                      (or (object-lock dep)
+                          (throw (ex-info "Dependency is not a registered object..." {:error-type :unregistered-dependency}))))
+                    deps)]
+    (doseq [lock locks]
+      (.lock lock))
+    (try
+      (register (f) opts)
+      (finally
+        (doseq [lock locks]
+          (.unlock lock))))))
+
+(defmacro construct
+  "Like register, but locks dependencies before running the body, so they cannot be stopped while
+   this object is being constructed. Takes `opts` the same as register."
+  [opts & body]
+  `(construct-call ~opts (fn [] ~@body)))
 
 (defn alias
   "Aliases an object under the provided key, each alias can only be assigned to one object, so
@@ -108,6 +164,18 @@
   [x alias]
   (swap! reg do-alias x alias)
   nil)
+
+(defn alter-data!
+  "Applies `f` to the data for the object (i.e supplied under :data key on registry)"
+  ([x f]
+   (let [newdata (volatile! nil)]
+     (swap! reg (fn [st]
+                  (if-some [id (get-id st x)]
+                    (update-in st [:meta id :data] (fn [data] (vreset! newdata (f data))))
+                    st)))
+     @newdata))
+  ([x f & args]
+    (alter-data! x #(apply f % args))))
 
 (defn id-seq
   "Returns the seq of registered object ids."
@@ -119,22 +187,60 @@
   (if-some [id (get-id st x)]
     (if-some [id2 (get-id st dependency)]
       (update st :g dep/depend id id2)
-      (throw (Exception. "Dependency is not a registered object...")))
-    (throw (Exception. "Not a registered object..."))))
+      (throw (ex-info "Dependency is not a registered object..." {:error-type :unregistered-dependency})))
+    (throw (ex-info "Not a registered object..." {:error-type :unregistered-object
+                                                  :op :depend}))))
 
 (defn- do-undepend
   [st x dependency]
-  (if-some [id (get-id st x)]
-    (if-some [id2 (get-id st dependency)]
-      (update st :g dep/remove-edge id id2)
-      (throw (Exception. "Dependency is not a registered object...")))
-    (throw (Exception. "Not a registered object..."))))
+  (when-some [id (get-id st x)]
+    (when-some [id2 (get-id st dependency)]
+      (update st :g dep/remove-edge id id2))))
+
+(defn dependencies
+  "Returns the ids of dependencies of `x`."
+  [x]
+  (let [st @reg]
+    (dep/immediate-dependencies (:g st) (get-id st x))))
+
+(defn dependents
+  "Returns the ids of the dependents of `x`."
+  [x]
+  (let [st @reg]
+    (dep/immediate-dependents (:g st) (get-id st x))))
+
+(defn dependent?
+  "Is `x` dependent on dependency?"
+  [x dependency]
+  (boolean
+    (let [st @reg]
+      (when-some [id1 (get-id st x)]
+        (when-some [id2 (get-id st dependency)]
+          (dep/dependent? (:g st) id1 id2))))))
 
 (defn depend
   "Makes `x` dependent on `dependency`, both can be registered object instances, aliases or ids.
   When you `(stop! dependency)` objection will make sure that `x` is stopped first."
   [x dependency]
-  (swap! reg do-depend x dependency)
+  ;; makes sure you cannot possible cause a deadlock
+  ;; by accidently depend a -> b , depend b -> a on different threads.
+  (locking global-lock
+    (if-some [dep-lock (object-lock dependency)]
+      (try
+        (.lock dep-lock)
+        (if (dependent? dependency x)
+          (throw (ex-info "Dependency cycle detected" {:error-type :dependency-cycle}))
+          (if-some [lock (object-lock x)]
+            (try
+              (.lock lock)
+              (swap! reg do-depend x dependency)
+              (finally
+                (.unlock lock)))
+            (throw (ex-info "Not a registered object..." {:error-type :unregistered-object
+                                                          :op :depend}))))
+        (finally
+          (.unlock dep-lock)))
+      (throw (ex-info "Dependency is not a registered object..." {:error-type :unregistered-dependency}))))
   nil)
 
 (defn undepend
@@ -143,47 +249,43 @@
   (swap! reg do-undepend x dependency)
   nil)
 
-(defn dependencies
-  "Returns the ids of dependencies of `x`."
-  [x]
-  (dep/immediate-dependencies (:g @reg) (id x)))
-
-(defn dependents
-  "Returns the ids of the dependents of `x`."
-  [x]
-  (dep/immediate-dependents (:g @reg) (id x)))
-
 (defn stop!
   "Runs the stopfn of `x` or the type specific AutoStoppable impl. e.g on AutoCloseable objects .close will be called.
 
   Removes the object from the registry."
   [x]
+  ;; what to do on error? re-register?
   (when x
-    (let [stopping (volatile! nil)]
-      (swap! reg (fn [st]
-                   (if-some [id (get-id st x)]
-                     (let [obj (-> st :id (get id))
-                           meta (-> st :meta (get id))
-                           aliases (:aliases meta)
-                           dependents (dep/immediate-dependents (:g st) id)]
-                       (vreset! stopping {:obj obj
-                                          :meta meta
-                                          :id id
-                                          :dependents dependents})
-                       (as->
-                         st st
-                         (update st :id dissoc id)
-                         (update st :obj dissoc (util/identity-box obj))
-                         (update st :meta dissoc id)
-                         (update st :g dep/remove-all id)
-                         (reduce #(update %1 :alias dissoc %2) st (cons id aliases))))
-                     st)))
-      (let [{:keys [meta obj dependents]} @stopping]
-        (run! stop! dependents)
-        (let [stopfn (:stopfn meta)]
+    (when-some [lock (object-lock x)]
+      (try
+        (.lock lock)
+        (run! stop! (dependents x))
+        (let [st @reg
+              id (get-id st x)
+              stopfn (-> st :meta (get id) :stopfn)
+              obj (-> st :id (get id))]
           (if (some? stopfn)
             (stopfn obj)
-            (-stop! obj)))))))
+            (-stop! obj))
+          (swap! reg (fn [st]
+                       (if-some [id (get-id st x)]
+                         (let [obj (-> st :id (get id))
+                               meta (-> st :meta (get id))
+                               aliases (:aliases meta)
+                               dependents (dep/immediate-dependents (:g st) id)
+                               dependencies (dep/immediate-dependencies (:g st) id)]
+                           (as->
+                             st st
+                             (update st :id dissoc id)
+                             (update st :obj dissoc (util/identity-box obj))
+                             (update st :meta dissoc id)
+                             (update st :lock dissoc id)
+                             (update st :g dep/remove-all id)
+                             (reduce #(update %1 :alias dissoc %2) st (cons id aliases))))
+                         st)))
+          nil)
+        (finally
+          (.unlock lock))))))
 
 (defn stop-all!
   "Stops all current registered objects."
@@ -242,7 +344,7 @@
 
   Singletons are always registered and they also receive an alias of the key used in the definition.
 
-  To introduce dependencies, stopfn, additional aliases etc, you can register the objection in the body
+  To introduce dependencies, stopfn, additional aliases etc, you can register the object in the body
   of the singleton in the normal way."
   [k & body]
   `(do
@@ -254,8 +356,9 @@
 (defn describe
   "Returns information about `x`, which can be a registered object, alias or id."
   [x]
-  (let [id (id x)
-        meta (-> @reg :meta (get id))
+  (let [st @reg
+        id (get-id st x)
+        meta (-> st :meta (get id))
         aliases (get meta :aliases)
         singleton-key (or (some (fn [a] (when (contains? @singleton-registry a) a)) aliases)
                           (when (contains? @singleton-registry x) x))]
@@ -263,13 +366,23 @@
       {:registered? (some? id)}
       (when singleton-key
         {:singleton-key singleton-key})
-      (select-keys meta [:name :aliases]))))
+      (select-keys meta [:id :name :data :aliases])
+      {:deps (dep/immediate-dependencies (:g st) id)
+       :dependents (dep/immediate-dependents (:g st) id)})))
+
+(defn data
+  "Returns the data associated with `x`, which can be a registered object, alias or id."
+  [x]
+  (let [st @reg
+        id (get-id st x)
+        meta (-> st :meta (get id))]
+    (:data meta)))
 
 (defn status
   "Prints information about currently registered objects."
   []
   (let [st @reg
-        ids (keys (:id st))]
+        ids (sort (keys (:id st)))]
     (println (count ids) "objects registered.")
     (when (seq ids)
       (println "-------")

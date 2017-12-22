@@ -184,7 +184,7 @@ Say we want to shut down the connection pool we can call `stop!` to do this.
 
 We do not have a pointer to the connection pool, as we just called (start!) and start does not return it.
 
-Thats ok, we can use the id instead.
+Thats ok, we can use the id (or prefix of id) instead.
 
 ```clojure
 (obj/stop! "367f10e2-588a-4022-af17-fb13822e09d6")
