@@ -153,8 +153,10 @@
           (.unlock lock))))))
 
 (defmacro construct
-  "Like register, but locks dependencies before running the body, so they cannot be stopped while
-   this object is being constructed. Takes `opts` the same as register."
+  "Takes same opts as `register`, takes a body that constructs an object and returns it.
+
+  locks dependencies before running the body, so they cannot be stopped while
+  this object is being constructed."
   [opts & body]
   `(construct-call ~opts (fn [] ~@body)))
 
