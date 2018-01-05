@@ -53,7 +53,7 @@ You can register an object with `register`.
   (-> (jetty/run-jetty handler {:port port
                                 :join? false})
       (obj/register
-       {;; optional
+       {;; all optional
         :name (str "Jetty Server on port " port)
         :alias [:jetty-server 8080]
         :data {:handler handler
@@ -132,14 +132,13 @@ You can use `stop-all!` to stop each and every object currently registered.
 Registered objects can be dependent on one another, manage dependencies through
 the `:deps` opt on registry, or using the `depend`/`undepend` functions.
 
+When constructing an object that is dependent on another one, it use wise to
+use the `construct` macro where possible as it protects against dependencies
+being stopped on other threads while the construction logic is run.
+
 ```clojure
 (defn arbitrary-object
  [server]
- ;; we use the 'construct' macro rather than register
- ;; it takes the same opts, but takes a body to be executed rather
- ;; than an existing instance.
- ;; Because of this, dependencies can be locked for stopping
- ;; while the object is constructed
  (obj/construct
   {:deps [server]
    :stopfn (fn [_] (println "stopping object"))}
