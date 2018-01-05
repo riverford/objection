@@ -28,8 +28,6 @@ I am a big fan of the excellent [integrant] and [component] libraries and have b
 
 However objection takes a different approach that is rather more dynamic than [component], [integrant] or [mount], after feeling that they bank too hard on a static application whose topology does not change at runtime.
 
-
-
 One thing that is particularily nice about both integrant and component is the declarative wiring of components - I would suggest using either library alongside objection if that has value for your application.
 
 ## Installation
@@ -65,7 +63,7 @@ You can register an object with `register`.
 
 ### Inspect the registry
 
-Each registred object is assigned an id, you can get all the currently registered object ids from the `id-seq` function. Alternatively use the function `(status)` to print some useful data.
+Each registered object is assigned an id, you can get all the currently registered object ids from the `id-seq` function. Alternatively use the function `(status)` to print some useful data.
 
 ```clojure
 (obj/status)
@@ -168,7 +166,7 @@ the construction code.
 
 ### Singletons
 
-Sometimes global singletons are not so bad, if they are used carefully.
+Sometimes global singletons are not so bad if they are used carefully.
 For example a good candidate for a singleton is a threadpool that is local to a namespace and used to optimize functions whose api in no way needs to reflect the implementation detail of the thread pool.
 e.g the `go` macro in core.async
 
