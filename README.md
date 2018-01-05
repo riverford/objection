@@ -132,9 +132,12 @@ You can use `stop-all!` to stop each and every object currently registered.
 Registered objects can be dependent on one another, manage dependencies through
 the `:deps` opt on registry, or using the `depend`/`undepend` functions.
 
-When constructing an object that is dependent on another one, it use wise to
-use the `construct` macro where possible as it protects against dependencies
+When constructing an object that is dependent on other objects, it is better to
+use the `construct` macro as it protects against dependencies
 being stopped on other threads while the construction logic is run.
+
+`construct` takes the same options as register, but takes them before the body containing
+the construction code.
 
 ```clojure
 (defn arbitrary-object
