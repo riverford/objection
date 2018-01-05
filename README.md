@@ -11,7 +11,7 @@ as connections, connection pools, threads, thread pools, servers, processes etc.
 I maintain big situated programs that need to talk to multiple databases, manage threadpools, processes and so on.
 
 Certain objects in most programs have global implications that are not managed by the garbage collector. They often have lifecycles, acquire
-resources they often have side-effects just by being 'active' (e.g a thread). They are often dependent on one another, and those dependencies
+resources or have side-effects just by being 'active' (e.g a thread). They are often dependent on one another, and those dependencies
 are often implicit and the managment of clean shutdowns is often hand-rolled.
 
 In concurrent scenarios all this becomes even more difficult, particularly in programs where such objects are being spawned/shutdown at runtime
