@@ -10,9 +10,9 @@ I maintain big situated programs that need to talk to multiple databases, manage
 
 > Component/Integrant/Mount already solves this problem, why not use that or make a PR or something
 
-Objection takes a different approach that is rather more dynamic than [component], [integrant] or [mount], after feeling that they bank too hard on a static application whose topology does not change at runtime.
+I am a big fan of the excellent [integrant] and [component] libraries and have been using them for almost as long as I have been using clojure.
 
-I am a big fan of both [integrant] and [component] and have been using them for almost as long as I have been using clojure.
+However objection takes a different approach that is rather more dynamic than [component], [integrant] or [mount], after feeling that they bank too hard on a static application whose topology does not change at runtime.
 
 Objections idea of a live and mutable system makes a different set of trade offs when approaching the problem.
 One thing that is particularily nice about both integrant and component is the declarative wiring of components - I would suggest using either library alongside objection if that has value for your application.
