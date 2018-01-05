@@ -1,5 +1,7 @@
 # objection
 
+![build](https://travis-ci.org/riverford/objection.svg?branch=master)
+
 > Helps you manage necessary stateful objects in your programs
 
 objection is about managing graphs of objects that acquire resources globally such
