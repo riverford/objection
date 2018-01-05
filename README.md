@@ -185,6 +185,7 @@ e.g
 Pull requests wecome!
 
 - tools.namespace reloaded support
+- More documentation, examples, usage guidelines
 - More introspection
 - Better query based on user data
 - Middleware (on-stop/on-start etc)
