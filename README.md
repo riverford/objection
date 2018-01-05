@@ -1,4 +1,4 @@
-# objection
+# Objection
 
 ![build](https://travis-ci.org/riverford/objection.svg?branch=master)
 
