@@ -1,4 +1,4 @@
-(defproject objection "0.1.0-SNAPSHOT"
+(defproject riverford/objection "0.1.0-SNAPSHOT"
   :description "Manages global resources."
   :url "https://github.com/riverford/objection"
   :license {:name "Eclipse Public License"

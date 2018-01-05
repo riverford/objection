@@ -58,13 +58,14 @@
     (-> st :lock (get id))))
 
 (defn id
-  "Returns the id of the object, the id was assigned
-  when the object was first registered."
+  "Returns the id of the object if the object is registered.
+
+  You can pass the object instance, or an alias of the object."
   [x]
   (get-id @reg x))
 
 (defn object
-  "Returns a registered object, can pass either an id, id prefix, alias or object instance."
+  "Returns a registered object, can pass either an id, id-prefix, alias or object instance."
   [x]
   (let [st @reg
         id (get-id st x)]
@@ -122,13 +123,26 @@
 (defn register
   "Registers the object with objection and returns it, will assign it an id automatically.
 
+  An object can be practically anything, but would be expected to be something like a connection pool or a thread etc.
+
+  A registered object is kept alive by objection. Stop the object using the (stop! obj) function.
+  Almost all objection functions can use the object itself, an id, id prefix or alias.
+
+  See-also: construct
+
   Opts:
 
-  `:name` - a name to use for the object, doesn't have to be unique.
-  `:aliases` - a sequence of aliases to apply to the object
-  `:data` - user supplied metadata about the object
+  `:name` - a human friendly name to use for the object in display functions, doesn't have to be unique.
+
+  `:aliases` - a sequence of aliases to apply to the object, each alias can be used interchangebly with the object
+   in objection functions.
+
+  `:data` - user supplied metadata about the object, retrieve later with (data obj).
+
   `:deps` - a sequence of dependencies, supports passing objection ids, aliases or registered objects.
-  `:stopfn` - a function of the object that performs any shutdown logic."
+
+  `:stopfn` - a function of the object that performs any shutdown logic. Alternatively implement IAutoStoppable
+   for the type of the object."
   ([obj] (register obj {}))
   ([obj opts]
 
@@ -159,19 +173,24 @@
   "Takes same opts as `register`, takes a body that constructs an object and returns it.
 
   locks dependencies before running the body, so they cannot be stopped while
-  this object is being constructed."
+  this object is being constructed.
+
+  See-also: register"
   [opts & body]
   `(construct-call ~opts (fn [] ~@body)))
 
 (defn alias
   "Aliases an object under the provided key, each alias can only be assigned to one object, so
-  make sure it is unique."
+  make sure it is unique.
+
+  Onced aliased the alias can be used interchangably with the object in objection functions on the object."
   [x alias]
   (swap! reg do-alias x alias)
   nil)
 
 (defn alter-data!
-  "Applies `f` to the data for the object (i.e supplied under :data key on registry)"
+  "Applies `f` to the data for the object (i.e supplied under :data key on registry/construct).
+  Returns the new data."
   ([x f]
    (let [newdata (volatile! nil)]
      (swap! reg (fn [st]
@@ -261,7 +280,10 @@
 (defn stop!
   "Runs the stopfn of `x` or the type specific AutoStoppable impl. e.g on AutoCloseable objects .close will be called.
 
-  Removes the object from the registry."
+  Removes the object from the registry.
+
+  If an exception is thrown when stopping the object, it will remain in the registry, use the :force? option to unregister
+  on error."
   ([x] (stop! x {}))
   ([x opts]
     ;; what to do on error? re-register?
@@ -277,7 +299,7 @@
                (stop! x (assoc opts ::singleton-locked? true))
                (finally
                  (.unlock ^Lock slock))))
-           (do
+           (let [err-box (volatile! nil)]
              (run! stop! (dependents x))
              (let [st @reg
                    id (get-id st x)
@@ -291,8 +313,7 @@
                    (catch InterruptedException e
                      (throw e))
                    (catch Throwable e
-                     ;; swallow error
-                     ))
+                     (vreset! err-box e)))
                  (if (some? stopfn)
                    (stopfn obj)
                    (-stop! obj)))
@@ -312,15 +333,11 @@
                                   (update st :g dep/remove-all id)
                                   (reduce #(update %1 :alias dissoc %2) st (cons id aliases))))
                               st)))
-               nil)))
+               nil)
+             (when-some [exc @err-box]
+               (throw exc))))
          (finally
            (.unlock lock)))))))
-
-(defn kill!
-  "Like `stop!` but will still continue instead of throwing if stopping the object
-  throws an error."
-  [x]
-  (stop! x {:force? true}))
 
 (defn stop-all!
   "Stops all current registered objects."
@@ -328,7 +345,7 @@
   (run! stop! (id-seq)))
 
 (defn rename!
-  "Changes the :name of `x`"
+  "Changes the :name of `x` to `s`. Then name is intended for display purposes only."
   [x s]
   (swap! reg (fn [st] (if-some [id (get-id st x)]
                         (assoc-in st [:meta id :name] (str s))
@@ -382,6 +399,7 @@
   nil)
 
 (defn singleton-keys
+  "Returns the keys of each registered singleton."
   []
   (keys @singleton-registry))
 
@@ -393,7 +411,8 @@
 
   Redefinition of a singleton will stop any existing instances.
 
-  Singletons are always registered and they also receive an alias of the key used in the definition.
+  Singletons are always implicitly registered after construction
+  and they also receive an alias of the key used in the definition.
 
   To introduce dependencies, stopfn, additional aliases etc, you can register or construct the object in the body
   of the singleton in the normal way."
