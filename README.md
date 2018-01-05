@@ -16,8 +16,7 @@ are often implicit and the managment of clean shutdowns is often hand-rolled.
 In concurrent scenarios all this becomes even more difficult, particularly in programs where such objects are being spawned/shutdown at runtime
 on multiple threads.
 
-The repl complicates things further, how often have you created a core.async process only to lose the reference to a channel and be
-powerless to reacquire it?
+The repl complicates things further, how often have you created a core.async process only to lose the reference to a channel?
 
 Objection provides a set of tools to manage the complexity inherent in objects of this nature,
 helping you write robust programs to have a better time at the repl when your program is changing as you edit it.
@@ -38,7 +37,7 @@ One thing that is particularily nice about both integrant and component is the d
 
 ### Register an object
 Objection manages regular old objects that have been registered with objection.
-You can register an object with `register`.
+You can register an object with `register`, it returns the object passed as-is.
 
 ```clojure
 (require '[objection.core :as obj]
