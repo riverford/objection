@@ -1,7 +1,5 @@
 # Objection
 
-![build](https://travis-ci.org/riverford/objection.svg?branch=master)
-
 > A dynamic approach to application components
 
 objection is about managing graphs of objects that acquire resources globally such
