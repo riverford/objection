@@ -1,6 +1,6 @@
 # objection
 
-> Helps you manage the necessary objects in your programs.
+> Helps you manage necessary stateful objects in your programs
 
 objection is about managing graphs of objects that acquire resources globally such
 as connections, connection pools, threads, thread pools, servers, processes etc.
