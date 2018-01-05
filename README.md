@@ -188,7 +188,7 @@ Redefinition of the singleton will stop any existing instance for the singleton 
 ```
 
 Grab a singleton with `singleton`, at this point the singleton definition will be evaluated
-and a registered object will be returned. Repeatedly calling singleton will return the same object.
+and a registered object will be returned. Repeatedly calling singleton with the same key will return the same object.
 
 ```clojure
 (obj/singleton :my-threadpool)
