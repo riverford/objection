@@ -74,7 +74,7 @@ Each registred object is assigned an id, you can get all the currently registere
 ;; -------
 ;; objects:
 ;; -------
-;; 81e73f11-dc5f-4576-b706-420fa53856d7  - Jetty Server on port 8080
+;; 81e73f11-dc5f-4576-b706-420fa53856d7 - Jetty Server on port 8080
 ```
 
 ### Inspect an object
@@ -136,7 +136,7 @@ When constructing an object that is dependent on other objects, it is better to
 use the `construct` macro as it protects against dependencies
 being stopped on other threads while the construction logic is run.
 
-`construct` takes the same options as register, but takes them before the body containing
+`construct` takes the same options as `register`, but takes them before the body containing
 the construction code.
 
 ```clojure
@@ -151,6 +151,16 @@ the construction code.
 (let [server (start-server (fn [_] (resp/response "Hello World")) 8080)]
  (arbitrary-object server))
 
+ ;;b2af4b34-d37a-4f6a-892e-36db94aa95ac
+
+(obj/status)
+;; 2 objects registered.
+;; -------
+;; objects:
+;; -------
+;; b2af4b34-d37a-4f6a-892e-36db94aa95ac - Jetty Server on port 8080
+;; f0094e78-e886-4ff0-9e9d-8dd632ea66df - java.lang.Object
+
 ;; now if we stop the server, objection will first stop the dependent object.
 (obj/stop! [:jetty-server 8080])
 ;; stopping object
@@ -160,10 +170,10 @@ the construction code.
 ### Singletons
 
 Sometimes global singletons are not so bad, if they are used carefully.
-For example a good candidate for a singleton is a threadpool that is local to a namespace and used to optimize functions whose api in no way needs to reflect the implementation-detail of the thread pool.
+For example a good candidate for a singleton is a threadpool that is local to a namespace and used to optimize functions whose api in no way needs to reflect the implementation detail of the thread pool.
 e.g the `go` macro in core.async
 
-Define a singleton with `defsingleton`, defsingleton does not immediately evaluate its body, it is rather lazy, so they are safe to define in any order and it does not really matter what namespace they are in in the code .
+Define a singleton with `defsingleton`, defsingleton does not evaluate its body, so they are safe to define in any order and it does not really matter what namespace they are in in the code .
 
 Redefinition of the singleton will stop any existing instance for the singleton (and any dependent objects).
 
