@@ -8,7 +8,6 @@ objection is about managing graphs of objects that acquire resources globally su
 as connections, connection pools, threads, thread pools, servers, processes etc.
 
 ## Rationale
-I maintain big situated programs that need to talk to multiple databases, manage threadpools, processes and so on.
 
 Certain objects in most programs have global implications that are not managed by the garbage collector. They often have lifecycles, acquire
 resources or have side-effects just by being 'active' (e.g a thread). They are often dependent on one another, and those dependencies
