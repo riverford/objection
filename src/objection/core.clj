@@ -190,7 +190,7 @@
 
 (defn alter-data!
   "Applies `f` to the data for the object (i.e supplied under :data key on registry/construct).
-  Returns the new data."
+  Saves and returns the new data."
   ([x f]
    (let [newdata (volatile! nil)]
      (swap! reg (fn [st]
