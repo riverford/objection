@@ -173,7 +173,7 @@ Sometimes global singletons are not so bad, if they are used carefully.
 For example a good candidate for a singleton is a threadpool that is local to a namespace and used to optimize functions whose api in no way needs to reflect the implementation detail of the thread pool.
 e.g the `go` macro in core.async
 
-Define a singleton with `defsingleton`, defsingleton does not evaluate its body, so they are safe to define in any order and it does not really matter what namespace they are in in the code .
+Define a singleton with `defsingleton`, defsingleton does not evaluate its body, so they are safe to define in any order.
 
 Redefinition of the singleton will stop any existing instance for the singleton (and any dependent objects).
 
