@@ -91,7 +91,10 @@
 
 (defn- do-register
   [st id obj opts]
-  (let [id (or (get-id st obj) id)]
+  (let [existing-id (get-id st obj)
+        id (or existing-id id)
+        obj (or (-> st :id (get id))
+                obj)]
     (as->
       st st
       (assoc-in st [:id id] obj)
