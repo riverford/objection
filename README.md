@@ -1,8 +1,6 @@
-# objection
+# Objection
 
-![build](https://travis-ci.org/riverford/objection.svg?branch=master)
-
-> Helps you manage necessary stateful objects in your programs
+> A dynamic approach to application components
 
 objection is about managing graphs of objects that acquire resources globally such
 as connections, connection pools, threads, thread pools, servers, processes etc.
@@ -16,8 +14,7 @@ are often implicit and the managment of clean shutdowns is often hand-rolled.
 In concurrent scenarios all this becomes even more difficult, particularly in programs where such objects are being spawned/shutdown at runtime
 on multiple threads.
 
-The repl complicates things further, how often have you created a core.async process only to lose the reference to a channel and be
-powerless to reacquire it?
+The repl complicates things further, how often have you created a core.async process only to lose the reference to a channel?
 
 Objection provides a set of tools to manage the complexity inherent in objects of this nature,
 helping you write robust programs to have a better time at the repl when your program is changing as you edit it.
@@ -27,8 +24,6 @@ helping you write robust programs to have a better time at the repl when your pr
 I am a big fan of the excellent [integrant] and [component] libraries and have been using them for almost as long as I have been using clojure.
 
 However objection takes a different approach that is rather more dynamic than [component], [integrant] or [mount], after feeling that they bank too hard on a static application whose topology does not change at runtime.
-
-
 
 One thing that is particularily nice about both integrant and component is the declarative wiring of components - I would suggest using either library alongside objection if that has value for your application.
 
@@ -40,7 +35,7 @@ One thing that is particularily nice about both integrant and component is the d
 
 ### Register an object
 Objection manages regular old objects that have been registered with objection.
-You can register an object with `register`.
+You can register an object with `register`, it returns the object passed as-is.
 
 ```clojure
 (require '[objection.core :as obj]
@@ -65,7 +60,7 @@ You can register an object with `register`.
 
 ### Inspect the registry
 
-Each registred object is assigned an id, you can get all the currently registered object ids from the `id-seq` function. Alternatively use the function `(status)` to print some useful data.
+Each registered object is assigned an id, you can get all the currently registered object ids from the `id-seq` function. Alternatively use the function `(status)` to print some useful data.
 
 ```clojure
 (obj/status)
@@ -168,7 +163,7 @@ the construction code.
 
 ### Singletons
 
-Sometimes global singletons are not so bad, if they are used carefully.
+Sometimes global singletons are not so bad if they are used carefully.
 For example a good candidate for a singleton is a threadpool that is local to a namespace and used to optimize functions whose api in no way needs to reflect the implementation detail of the thread pool.
 e.g the `go` macro in core.async
 
