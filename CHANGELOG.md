@@ -3,6 +3,9 @@ All notable changes to this project will be documented in this file. This change
 
 ## Unreleased
 
+### Added
+- ClojureScript support! Remember to `:require-macros`/`:include-macros`!
+
 ### Changed
 - `defsingleton` now takes an (optional) options map with an optional `:reload?` flag.
 
