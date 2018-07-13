@@ -10,4 +10,4 @@ pom.xml.asc
 .hgignore
 .hg/
 *.iml
-.idea/
+/nashorn_code_cache

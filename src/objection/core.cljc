@@ -13,13 +13,15 @@
             [objection.util :as util]
             [clojure.string :as str])
   (:refer-clojure :exclude [alias with-open])
-  (:import (java.util UUID)
-           (java.lang AutoCloseable)
-           (java.util.concurrent.locks ReentrantLock Lock)))
+  #?(:clj
+     (:import (java.util UUID)
+              (java.lang AutoCloseable)
+              (java.util.concurrent.locks ReentrantLock Lock))))
 
 ;; Used sparingly when granular locks would be problematic, such as on depend calls.
-(defonce ^:private global-lock
-  (Object.))
+#?(:clj
+   (defonce ^:private global-lock
+     (Object.)))
 
 (defonce ^:private reg
   (atom {:g (dep/graph)
@@ -49,11 +51,12 @@
         (get-id st a))
       (obj (util/identity-box x)))))
 
-(defn- ^Lock lock-for-object
-  [x]
-  (let [st @reg
-        id (get-id st x)]
-    (-> st :lock (get id))))
+#?(:clj
+   (defn- ^Lock lock-for-object
+     [x]
+     (let [st @reg
+           id (get-id st x)]
+       (-> st :lock (get id)))))
 
 (defn id
   "Returns the id of the object if the object is registered.
@@ -98,7 +101,7 @@
       (assoc-in st [:id id] obj)
       (assoc-in st [:obj (util/identity-box obj)] id)
       (assoc-in st [:alias id] id)
-      (assoc-in st [:lock id] (ReentrantLock.))
+      #?(:clj (assoc-in st [:lock id] (ReentrantLock.)))
       (update-in st [:meta id] merge {:id id} (select-keys opts [:name :stopfn :data]))
       (reduce #(do-alias %1 id %2) st (if (contains? opts :alias)
                                         (cons (:alias opts) (:aliases opts))
@@ -114,12 +117,13 @@
   nil
   (-stop! [this]
     nil)
-  Object
+  #?(:clj Object
+     :cljs default)
   (-stop! [this]
     nil)
-  AutoCloseable
-  (-stop! [this]
-    (.close this)))
+  #?@(:clj [AutoCloseable
+            (-stop! [this]
+              (.close this))]))
 
 (defn register
   "Registers the object with objection and returns it, will assign it an id automatically.
@@ -150,25 +154,31 @@
    (assert (some? obj))
    (assert (not (false? obj)))
 
-   (swap! reg do-register (str (UUID/randomUUID)) obj opts)
+   (swap! reg do-register (str #?(:clj (UUID/randomUUID)
+                                  :cljs (random-uuid))) obj opts)
    obj))
 
-(declare singleton)
+(declare singleton need)
 
 (defn construct-call
   [opts f]
-  (let [deps (:deps opts)
-        locks (mapv (fn [dep]
-                      (or (lock-for-object dep)
-                          (throw (ex-info "Dependency is not a registered object..." {:error-type :unregistered-dependency}))))
-                    deps)]
-    (doseq [lock locks]
-      (.lock lock))
-    (try
-      (register (f) opts)
-      (finally
-        (doseq [lock locks]
-          (.unlock lock))))))
+  #?(:cljs
+     (do
+       (run! need (:deps opts))
+       (register (f) opts))
+     :clj
+     (let [deps (:deps opts)
+           locks (mapv (fn [dep]
+                         (or (lock-for-object dep)
+                             (throw (ex-info "Dependency is not a registered object..." {:error-type :unregistered-dependency}))))
+                       deps)]
+       (doseq [lock locks]
+         (.lock lock))
+       (try
+         (register (f) opts)
+         (finally
+           (doseq [lock locks]
+             (.unlock lock)))))))
 
 (defmacro construct
   "Takes same opts as `register`, takes a body that constructs an object and returns it.
@@ -249,25 +259,34 @@
   "Makes `x` dependent on `dependency`, both can be registered object instances, aliases or ids.
   When you `(stop! dependency)` objection will make sure that `x` is stopped first."
   [x dependency]
-  ;; makes sure you cannot possible cause a deadlock
-  ;; by accident depend a -> b , depend b -> a on different threads.
-  (locking global-lock
-    (if-some [dep-lock (lock-for-object dependency)]
-      (try
-        (.lock dep-lock)
-        (if (depends? dependency x)
-          (throw (ex-info "Dependency cycle detected" {:error-type :dependency-cycle}))
-          (if-some [lock (lock-for-object x)]
-            (try
-              (.lock lock)
-              (swap! reg do-depend x dependency)
-              (finally
-                (.unlock lock)))
-            (throw (ex-info "Not a registered object..." {:error-type :unregistered-object
-                                                          :op :depend}))))
-        (finally
-          (.unlock dep-lock)))
-      (throw (ex-info "Dependency is not a registered object..." {:error-type :unregistered-dependency}))))
+  #?(:cljs
+     (if (or (not (object dependency))
+             (not (object x)))
+       (throw (ex-info "Not a registered object..." {:error-type :unregistered-object
+                                                     :op :depend}))
+       (if (depends? dependency x)
+         (throw (ex-info "Dependency cycle detected" {:error-type :dependency-cycle}))
+         (swap! reg do-depend x dependency)))
+     :clj
+     ;; makes sure you cannot possible cause a deadlock
+     ;; by accident depend a -> b , depend b -> a on different threads.
+     (locking global-lock
+       (if-some [dep-lock (lock-for-object dependency)]
+         (try
+           (.lock dep-lock)
+           (if (depends? dependency x)
+             (throw (ex-info "Dependency cycle detected" {:error-type :dependency-cycle}))
+             (if-some [lock (lock-for-object x)]
+               (try
+                 (.lock lock)
+                 (swap! reg do-depend x dependency)
+                 (finally
+                   (.unlock lock)))
+               (throw (ex-info "Not a registered object..." {:error-type :unregistered-object
+                                                             :op :depend}))))
+           (finally
+             (.unlock dep-lock)))
+         (throw (ex-info "Dependency is not a registered object..." {:error-type :unregistered-dependency})))))
   nil)
 
 (defn undepend
@@ -276,7 +295,7 @@
   (swap! reg do-undepend x dependency)
   nil)
 
-(declare lock-for-singleton describe)
+(declare #?(:clj lock-for-singleton) describe)
 
 (defn stop!
   "Runs the stopfn of `x` or the type specific AutoStoppable impl. e.g on AutoCloseable objects .close will be called.
@@ -287,55 +306,90 @@
   on error."
   ([x] (stop! x {}))
   ([x opts]
-   (when x
-     (when-some [lock (lock-for-object x)]
-       (try
-         (.lock lock)
-         (if-some [singleton-key (when-not (::singleton-locked? opts)
-                                   (:singleton-key (describe x)))]
-           (let [slock (lock-for-singleton singleton-key)]
-             (try
-               (.lock ^Lock slock)
-               (stop! x (assoc opts ::singleton-locked? true))
-               (finally
-                 (.unlock ^Lock slock))))
-           (let [err-box (volatile! nil)]
-             (run! stop! (dependents x))
-             (let [st @reg
-                   id (get-id st x)
-                   stopfn (-> st :meta (get id) :stopfn)
-                   obj (-> st :id (get id))]
-               (if (:force? opts)
-                 (try
-                   (if (some? stopfn)
-                     (stopfn obj)
-                     (-stop! obj))
-                   (catch InterruptedException e
-                     (throw e))
-                   (catch Throwable e
-                     (vreset! err-box e)))
-                 (if (some? stopfn)
-                   (stopfn obj)
-                   (-stop! obj)))
-               (swap! reg (fn [st]
-                            (if-some [id (get-id st x)]
-                              (let [obj (-> st :id (get id))
-                                    meta (-> st :meta (get id))
-                                    aliases (:aliases meta)]
-                                (as->
-                                  st st
-                                  (update st :id dissoc id)
-                                  (update st :obj dissoc (util/identity-box obj))
-                                  (update st :meta dissoc id)
-                                  (update st :lock dissoc id)
-                                  (update st :g dep/remove-all id)
-                                  (reduce #(update %1 :alias dissoc %2) st (cons id aliases))))
-                              st)))
-               nil)
-             (when-some [exc @err-box]
-               (throw exc))))
-         (finally
-           (.unlock lock)))))))
+   #?(:cljs
+      (when x
+        (let [err-box (volatile! nil)]
+          (run! stop! (dependents x))
+          (let [st @reg
+                id (get-id st x)
+                stopfn (-> st :meta (get id) :stopfn)
+                obj (-> st :id (get id))]
+            (if (:force? true)
+              (try
+                (if (some? stopfn)
+                  (stopfn obj)
+                  (-stop! obj))
+                (catch :default e
+                  (vreset! err-box e)))
+              (if (some? stopfn)
+                (stopfn obj)
+                (-stop! obj)))
+            (swap! reg (fn [st]
+                         (if-some [id (get-id st x)]
+                           (let [obj (-> st :id (get id))
+                                 meta (-> st :meta (get id))
+                                 aliases (:aliases meta)]
+                             (as->
+                               st st
+                               (update st :id dissoc id)
+                               (update st :obj dissoc (util/identity-box obj))
+                               (update st :meta dissoc id)
+                               (update st :g dep/remove-all id)
+                               (reduce #(update %1 :alias dissoc %2) st (cons id aliases))))
+                           st)))
+            (when-some [exc @err-box]
+              (throw exc))
+            nil)))
+      :clj
+      (when x
+        (when-some [lock (lock-for-object x)]
+          (try
+            (.lock lock)
+            (if-some [singleton-key (when-not (::singleton-locked? opts)
+                                      (:singleton-key (describe x)))]
+              (let [slock (lock-for-singleton singleton-key)]
+                (try
+                  (.lock ^Lock slock)
+                  (stop! x (assoc opts ::singleton-locked? true))
+                  (finally
+                    (.unlock ^Lock slock))))
+              (let [err-box (volatile! nil)]
+                (run! stop! (dependents x))
+                (let [st @reg
+                      id (get-id st x)
+                      stopfn (-> st :meta (get id) :stopfn)
+                      obj (-> st :id (get id))]
+                  (if (:force? opts)
+                    (try
+                      (if (some? stopfn)
+                        (stopfn obj)
+                        (-stop! obj))
+                      (catch InterruptedException e
+                        (throw e))
+                      (catch Throwable e
+                        (vreset! err-box e)))
+                    (if (some? stopfn)
+                      (stopfn obj)
+                      (-stop! obj)))
+                  (swap! reg (fn [st]
+                               (if-some [id (get-id st x)]
+                                 (let [obj (-> st :id (get id))
+                                       meta (-> st :meta (get id))
+                                       aliases (:aliases meta)]
+                                   (as->
+                                     st st
+                                     (update st :id dissoc id)
+                                     (update st :obj dissoc (util/identity-box obj))
+                                     (update st :meta dissoc id)
+                                     (update st :lock dissoc id)
+                                     (update st :g dep/remove-all id)
+                                     (reduce #(update %1 :alias dissoc %2) st (cons id aliases))))
+                                 st)))
+                  nil)
+                (when-some [exc @err-box]
+                  (throw exc))))
+            (finally
+              (.unlock lock))))))))
 
 (defn stop-all!
   "Stops all current registered objects.
@@ -355,9 +409,10 @@
 
 (defonce ^:private singleton-registry (atom {}))
 
-(defn- lock-for-singleton
-  [k]
-  (-> @singleton-registry (get k) :lock))
+#?(:clj
+   (defn- lock-for-singleton
+     [k]
+     (-> @singleton-registry (get k) :lock)))
 
 (defn singleton
   "Like (object `k`) but if a singleton is registered under the key `k`, it will be constructed if necessary
@@ -367,7 +422,7 @@
   [k]
   (or (object k)
       (when-some [{:keys [f lock]} (get @singleton-registry k)]
-        (.lock ^Lock lock)
+        #?(:clj (.lock ^Lock lock))
         (try
           (or (object k)
               (let [ret (f)]
@@ -377,7 +432,7 @@
                 (alias ret k)
                 ret))
           (finally
-            (.unlock ^Lock lock))))))
+            #?(:clj (.unlock ^Lock lock)))))))
 
 (defn need
   "Tries to resolve `x` to a registered object, or singleton - throws an exception with the message if not possible."
@@ -387,7 +442,10 @@
    (assert (not (false? x)))
    (or (object x)
        (singleton x)
-       (throw (IllegalArgumentException. (str (or error-message "Not a registered object.")))))))
+       #?(:clj (throw (IllegalArgumentException. (str (or error-message "Not a registered object."))))
+          :cljs (throw (ex-info (str (or error-message "Not a registered object."))
+                                {:error-type :unregistered-object
+                                 :op :need}))))))
 
 (defn put-singleton*
   [k f meta]
@@ -397,8 +455,8 @@
   (swap! singleton-registry (fn [m] (assoc m k {:f f
                                                 :k k
                                                 :meta meta
-                                                :lock (or (:lock (get m k))
-                                                          (ReentrantLock.))})))
+                                                #?@(:clj [:lock (or (:lock (get m k))
+                                                                    (ReentrantLock.))])})))
   nil)
 
 (defn singleton-keys
@@ -479,7 +537,8 @@
               :let [meta (get (:meta st) id)]]
         (println id " - " (or (:name meta)
                               (first (:aliases meta))
-                              (class (get (:id st) id))))))))
+                              #?(:clj (class (get (:id st) id))
+                                 :cljs (type (get (:id st) id)))))))))
 
 (defmacro with-open
   "Like clojure.core/with-open but works registered objects, calling their stop functions instead of .close."
@@ -516,5 +575,6 @@
 
 
     (println "Starting a thing")
-    (register (UUID/randomUUID) {:stopfn (partial println "stopping")
-                                 :deps [thingy]})))
+    (register #?(:cljs (random-uuid)
+                 :clj  (UUID/randomUUID)) {:stopfn (partial println "stopping")
+                                                         :deps [thingy]})))
