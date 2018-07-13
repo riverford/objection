@@ -12,11 +12,9 @@
   (:require [com.stuartsierra.dependency :as dep]
             [objection.util :as util]
             [clojure.string :as str])
-  (:refer-clojure :exclude [alias])
+  (:refer-clojure :exclude [alias with-open])
   (:import (java.util UUID)
            (java.lang AutoCloseable)
-           (java.util.concurrent ConcurrentHashMap)
-           (clojure.lang IDeref IFn)
            (java.util.concurrent.locks ReentrantLock Lock)))
 
 ;; Used sparingly when granular locks would be problematic, such as on depend calls.
@@ -137,7 +135,7 @@
 
   `:name` - a human friendly name to use for the object in display functions, doesn't have to be unique.
 
-  `:aliases` - a sequence of aliases to apply to the object, each alias can be used interchangebly with the object
+  `:aliases` - a sequence of aliases to apply to the object, each alias can be used interchangeably with the object
    in objection functions.
 
   `:data` - user supplied metadata about the object, retrieve later with (data obj).
@@ -202,7 +200,7 @@
                     st)))
      @newdata))
   ([x f & args]
-    (alter-data! x #(apply f % args))))
+   (alter-data! x #(apply f % args))))
 
 (defn id-seq
   "Returns the seq of registered object ids."
@@ -289,7 +287,6 @@
   on error."
   ([x] (stop! x {}))
   ([x opts]
-    ;; what to do on error? re-register?
    (when x
      (when-some [lock (lock-for-object x)]
        (try
@@ -324,9 +321,7 @@
                             (if-some [id (get-id st x)]
                               (let [obj (-> st :id (get id))
                                     meta (-> st :meta (get id))
-                                    aliases (:aliases meta)
-                                    dependents (dep/immediate-dependents (:g st) id)
-                                    dependencies (dep/immediate-dependencies (:g st) id)]
+                                    aliases (:aliases meta)]
                                 (as->
                                   st st
                                   (update st :id dissoc id)
@@ -343,9 +338,12 @@
            (.unlock lock)))))))
 
 (defn stop-all!
-  "Stops all current registered objects."
-  []
-  (run! stop! (id-seq)))
+  "Stops all current registered objects.
+  Options are the same as those accepted by 'stop!'."
+  ([]
+   (run! stop! (id-seq)))
+  ([opts]
+   (run! #(stop! % opts) (id-seq))))
 
 (defn rename!
   "Changes the :name of `x` to `s`. Then name is intended for display purposes only."
@@ -393,7 +391,9 @@
 
 (defn put-singleton*
   [k f meta]
-  (stop! k)
+  (when (:reload? meta)
+    (stop! k))
+
   (swap! singleton-registry (fn [m] (assoc m k {:f f
                                                 :k k
                                                 :meta meta
@@ -418,13 +418,25 @@
   and they also receive an alias of the key used in the definition.
 
   To introduce dependencies, stopfn, additional aliases etc, you can register or construct the object in the body
-  of the singleton in the normal way."
-  [k & body]
-  `(do
-     (put-singleton* ~k (fn []
-                          (register
-                            (do ~@body)
-                            {:aliases [~k]})) {:ns (quote ~(symbol (str *ns*)))})))
+  of the singleton in the normal way.
+
+  Options:
+
+  :reload? (default true)
+  If true will cause the singleton to restart on redefinition, otherwise a restart will require you to stop!
+  any existing instance."
+  [k opts? & body]
+  (let [[opts body] (if (map? opts?)
+                      [opts? body]
+                      [nil (cons opts? body)])
+        {:keys [reload?] :or {reload? true}} opts]
+    `(do
+       (put-singleton* ~k (fn []
+                            (register
+                              (do ~@body)
+                              {:aliases [~k]}))
+                       {:reload? ~reload?
+                        :ns (quote ~(symbol (str *ns*)))}))))
 
 (defn describe
   "Returns information about `x`, which can be a registered object, alias or id."
@@ -468,6 +480,18 @@
         (println id " - " (or (:name meta)
                               (first (:aliases meta))
                               (class (get (:id st) id))))))))
+
+(defmacro with-open
+  "Like clojure.core/with-open but works registered objects, calling their stop functions instead of .close."
+  [binding & body]
+  (if (zero? (count binding))
+    `(do ~@body)
+    `(let [~(nth binding 0) ~(nth binding 1)]
+       (try
+         (with-open ~(subvec binding 2)
+                    ~@body)
+         (finally
+           (stop! ~(nth binding 0)))))))
 
 (comment
   (defsingleton ::db

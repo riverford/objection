@@ -2,14 +2,42 @@
 
 > A dynamic approach to application components
 
-objection is about managing graphs of objects that acquire resources globally such
+objection is about objects that acquire resources globally such
 as connections, connection pools, threads, thread pools, servers, processes etc.
+
+It provides a means of registering such objects in a global registry giving you
+oversight of what is 'running' in your program.
+
+```clojure
+(defn jdbc-conn
+ "Returns a registered jdbc db-spec. Stop with obj/stop!"
+  [url]
+   (obj/register (db/pool url) {:name "JDBC Conn" :stopfn db/shutdown}))
+
+(jdbc-conn some-url)
+(obj/status)
+;; =>
+;; 1 objects registered.
+;; -------
+;; objects:
+;; -------
+;; 81e73f11-dc5f-4576-b706-420fa53856d7 - JDBC Conn
+
+(obj/stop! "81e")
+```
+
+## Features
+
+- Provides functions to register 'objects' in your program.
+- Objects can be registered at any time and on any thread.
+- Registered objects can be stopped, made dependent on one another,
+  have data associated with them, be named etc.
+- Objects that are stopped shutdown their dependencies first.
+- Objects can be anything really, no wrappers or protocol impls required.
 
 ## Rationale
 
-Certain objects in most programs have global implications that are not managed by the garbage collector. They often have lifecycles, acquire
-resources or have side-effects just by being 'active' (e.g a thread). They are often dependent on one another, and those dependencies
-are often implicit and the managment of clean shutdowns is often hand-rolled.
+Certain objects in most programs have global implications that are not managed by the garbage collector. They often have life cycles, acquire  resources or have side-effects just by being 'active' (e.g a thread). They are often dependent on one another, and those dependencies  are often implicit and the management of clean shutdowns is often hand-rolled.
 
 In concurrent scenarios all this becomes even more difficult, particularly in programs where such objects are being spawned/shutdown at runtime
 on multiple threads.
@@ -18,6 +46,8 @@ The repl complicates things further, how often have you created a core.async pro
 
 Objection provides a set of tools to manage the complexity inherent in objects of this nature,
 helping you write robust programs to have a better time at the repl when your program is changing as you edit it.
+
+## Comparison with mount/integrant/component
 
 > Component/Integrant/Mount already solves this problem, why not use that or make a PR or something
 
@@ -39,22 +69,9 @@ You can register an object with `register`, it returns the object passed as-is.
 
 ```clojure
 (require '[objection.core :as obj]
-         '[ring.adapter.jetty :as jetty]
-         '[ring.util.response :as resp])
-
+ '[ring.adapter.jetty :as jetty] '[ring.util.response :as resp])
 (defn start-server
-  [handler port]
-  (-> (jetty/run-jetty handler {:port port
-                                :join? false})
-      (obj/register
-       {;; all optional
-        :name (str "Jetty Server on port " port)
-        :alias [:jetty-server 8080]
-        :data {:handler handler
-               :port 8080}
-        ;; optional, but wise!
-        :stopfn (fn [server] (.stop server))})))
-
+ [handler port] (-> (jetty/run-jetty handler {:port port :join? false}) (obj/register {;; all optional :name (str "Jetty Server on port " port) :alias [:jetty-server 8080] :data {:handler handler :port 8080} ;; optional, but wise! :stopfn (fn [server] (.stop server))})))
 (start-server (fn [_] (resp/response "Hello World")) 8080)
 ```
 
@@ -82,14 +99,7 @@ will work on an id (or prefix), alias, as well as the object itself.
 (obj/describe "81e7")
 ;; =>
 {:registered? true,
- :id "81e73f11-dc5f-4576-b706-420fa53856d7",
- :name "Jetty Server on port 8080",
- :data {:handler #object[user$eval1843$fn__1844 0x45a21de2 "user$eval1843$fn__1844@45a21de2"]
-        :port 8080},
- :aliases #{[:jetty-server 8080]},
- :deps #{},
- :dependents #{}}
-```
+ :id "81e73f11-dc5f-4576-b706-420fa53856d7", :name "Jetty Server on port 8080", :data {:handler #object[user$eval1843$fn__1844 0x45a21de2 "user$eval1843$fn__1844@45a21de2"] :port 8080}, :aliases #{[:jetty-server 8080]}, :deps #{}, :dependents #{}}```
 
 `object` will return the object instance itself.
 ```clojure
@@ -135,18 +145,11 @@ the construction code.
 
 ```clojure
 (defn arbitrary-object
- [server]
- (obj/construct
-  {:deps [server]
-   :stopfn (fn [_] (println "stopping object"))}
-  (Object.)))
-
+ [server] (obj/construct {:deps [server] :stopfn (fn [_] (println "stopping object"))} (Object.)))
 ;; restart the server and construct the object.
 (let [server (start-server (fn [_] (resp/response "Hello World")) 8080)]
  (arbitrary-object server))
-
  ;;b2af4b34-d37a-4f6a-892e-36db94aa95ac
-
 (obj/status)
 ;; 2 objects registered.
 ;; -------
@@ -173,13 +176,7 @@ Redefinition of the singleton will stop any existing instance for the singleton 
 
 ```clojure
 (obj/defsingleton :my-threadpool
- ;; the register is optional as singletons will always be registered
- ;; but you can use it if you want to supply a name or deps etc
- (obj/register
-  (java.util.concurrent.Executors/newFixedThreadPool 4)
-  {:name "My Threadpool"
-   :stopfn (fn [tp] (println "Closing threadpool") (.shutdown tp))}))
-```
+ ;; the register is optional as singletons will always be registered ;; but you can use it if you want to supply a name or deps etc (obj/register (java.util.concurrent.Executors/newFixedThreadPool 4) {:name "My Threadpool" :stopfn (fn [tp] (println "Closing threadpool") (.shutdown tp))}))```
 
 Grab a singleton with `singleton`, at this point the singleton definition will be evaluated
 and a registered object will be returned. Repeatedly calling singleton with the same key will return the same object.
@@ -194,18 +191,24 @@ e.g
 (obj/describe :my-threadpool)
 ;; =>
 {:registered? true,
- :singleton-key :my-threadpool,
- :singleton-ns user,
- :id "adb8b07b-959d-4327-8442-722d813e17e0",
- :aliases #{:my-threadpool},
- :deps #{},
- :dependents #{}}
+ :singleton-key :my-threadpool, :singleton-ns user, :id "adb8b07b-959d-4327-8442-722d813e17e0", :aliases #{:my-threadpool}, :deps #{}, :dependents #{}}```
+
+### Data
+
+You can associate arbitrary data with an object on registry via a `:data` key.
+Later you can retrieve it with `obj/data`, or alter it via `alter-data!`.
+
+```clojure
+(obj/register foo {:data {:fred 42}})
+
+(obj/data foo) ;; => {:fred 42}
 ```
 
 ## Todo
 
 Pull requests wecome!
 
+- Clojurescript support
 - tools.namespace reloaded support
 - More documentation, examples, usage guidelines
 - More introspection
