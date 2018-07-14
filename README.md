@@ -12,7 +12,7 @@ oversight of what is 'running' in your program.
 (defn jdbc-conn
  "Returns a registered jdbc db-spec. Stop with obj/stop!"
   [url]
-   (obj/register (db/pool url) {:name "JDBC Conn" :stopfn db/shutdown}))
+  (obj/register (db/pool url) {:name "JDBC Conn" :stopfn db/shutdown}))
 
 (jdbc-conn some-url)
 (obj/status)
@@ -167,7 +167,10 @@ the construction code.
 ```clojure
 (defn arbitrary-object
  [server]
- (obj/construct {:deps [server] :stopfn (fn [_] (println "stopping object"))} (Object.)))
+ (obj/construct 
+  {:deps [server] 
+   :stopfn (fn [_] (println "stopping object"))}
+  (Object.)))
  
 ;; restart the server and construct the object.
 (let [server (start-server (fn [_] (resp/response "Hello World")) 8080)]
