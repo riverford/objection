@@ -68,10 +68,22 @@ Objection manages regular old objects that have been registered with objection.
 You can register an object with `register`, it returns the object passed as-is.
 
 ```clojure
-(require '[objection.core :as obj]
- '[ring.adapter.jetty :as jetty] '[ring.util.response :as resp])
+(require
+ '[objection.core :as obj]
+ '[ring.adapter.jetty :as jetty] 
+ '[ring.util.response :as resp])
+ 
 (defn start-server
- [handler port] (-> (jetty/run-jetty handler {:port port :join? false}) (obj/register {;; all optional :name (str "Jetty Server on port " port) :alias [:jetty-server 8080] :data {:handler handler :port 8080} ;; optional, but wise! :stopfn (fn [server] (.stop server))})))
+ [handler port]
+ (-> (jetty/run-jetty handler {:port port :join? false}) 
+     (obj/register 
+     { ;; all optional
+       :name (str "Jetty Server on port " port) 
+       :alias [:jetty-server 8080]
+       :data {:handler handler :port 8080}
+       ;; optional, but wise! 
+       :stopfn (fn [server] (.stop server))})))
+
 (start-server (fn [_] (resp/response "Hello World")) 8080)
 ```
 
