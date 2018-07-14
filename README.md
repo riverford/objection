@@ -111,14 +111,22 @@ will work on an id (or prefix), alias, as well as the object itself.
 (obj/describe "81e7")
 ;; =>
 {:registered? true,
- :id "81e73f11-dc5f-4576-b706-420fa53856d7", :name "Jetty Server on port 8080", :data {:handler #object[user$eval1843$fn__1844 0x45a21de2 "user$eval1843$fn__1844@45a21de2"] :port 8080}, :aliases #{[:jetty-server 8080]}, :deps #{}, :dependents #{}}```
+ :id "81e73f11-dc5f-4576-b706-420fa53856d7", 
+ :name "Jetty Server on port 8080",
+ :data {:handler #object[user$eval1843$fn__1844 0x45a21de2 "user$eval1843$fn__1844@45a21de2"] :port 8080}, 
+ :aliases #{[:jetty-server 8080]}, 
+ :deps #{},
+ :dependents #{}}
+ ```
 
 `object` will return the object instance itself.
+
 ```clojure
 (obj/object "81e7")
 ```
 
 `id` will return the id of the object or alias if it is registered.
+
 ```clojure
 (obj/id [:jetty-server 8080])
 (obj/id (obj/object "81e7"))
@@ -139,6 +147,7 @@ Registered objects can be stopped using the stop! function. Again an alias/id et
 ```
 
 You can use `stop-all!` to stop each and every object currently registered.
+
 ```clojure
 (obj/stop-all!)
 ```
@@ -157,10 +166,13 @@ the construction code.
 
 ```clojure
 (defn arbitrary-object
- [server] (obj/construct {:deps [server] :stopfn (fn [_] (println "stopping object"))} (Object.)))
+ [server]
+ (obj/construct {:deps [server] :stopfn (fn [_] (println "stopping object"))} (Object.)))
+ 
 ;; restart the server and construct the object.
 (let [server (start-server (fn [_] (resp/response "Hello World")) 8080)]
  (arbitrary-object server))
+ 
  ;;b2af4b34-d37a-4f6a-892e-36db94aa95ac
 (obj/status)
 ;; 2 objects registered.
@@ -188,7 +200,13 @@ Redefinition of the singleton will stop any existing instance for the singleton 
 
 ```clojure
 (obj/defsingleton :my-threadpool
- ;; the register is optional as singletons will always be registered ;; but you can use it if you want to supply a name or deps etc (obj/register (java.util.concurrent.Executors/newFixedThreadPool 4) {:name "My Threadpool" :stopfn (fn [tp] (println "Closing threadpool") (.shutdown tp))}))```
+ ;; the register is optional as singletons will always be registered 
+ ;; but you can use it if you want to supply a name or deps etc 
+ (obj/register 
+  (java.util.concurrent.Executors/newFixedThreadPool 4) 
+  {:name "My Threadpool"
+   :stopfn (fn [tp] (println "Closing threadpool") (.shutdown tp))}))
+```
 
 Grab a singleton with `singleton`, at this point the singleton definition will be evaluated
 and a registered object will be returned. Repeatedly calling singleton with the same key will return the same object.
@@ -203,7 +221,13 @@ e.g
 (obj/describe :my-threadpool)
 ;; =>
 {:registered? true,
- :singleton-key :my-threadpool, :singleton-ns user, :id "adb8b07b-959d-4327-8442-722d813e17e0", :aliases #{:my-threadpool}, :deps #{}, :dependents #{}}```
+ :singleton-key :my-threadpool, 
+ :singleton-ns user, 
+ :id "adb8b07b-959d-4327-8442-722d813e17e0",
+ :aliases #{:my-threadpool},
+ :deps #{}, 
+ :dependents #{}}
+```
 
 ### Data
 
