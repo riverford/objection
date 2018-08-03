@@ -482,7 +482,7 @@
 
   :reload? (default true)
   If true will cause the singleton to restart on redefinition, otherwise a restart will require you to stop!
-  any existing instance."
+  any existing instance in order for it to restart."
   [k opts? & body]
   (let [[opts body] (if (map? opts?)
                       [opts? body]
