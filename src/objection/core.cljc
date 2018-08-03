@@ -195,8 +195,8 @@
   make sure it is unique.
 
   Onced aliased the alias can be used interchangably with the object in objection functions on the object."
-  [x alias]
-  (swap! reg do-alias x alias)
+  [x k]
+  (swap! reg do-alias x k)
   nil)
 
 (defn alter-data!
