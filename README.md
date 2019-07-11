@@ -79,8 +79,8 @@ You can register an object with `register`, it returns the object passed as-is.
      (obj/register 
      { ;; all optional
        :name (str "Jetty Server on port " port) 
-       :alias [:jetty-server 8080]
-       :data {:handler handler :port 8080}
+       :alias [:jetty-server port]
+       :data {:handler handler :port port}
        ;; optional, but wise! 
        :stopfn (fn [server] (.stop server))})))
 
