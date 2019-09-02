@@ -32,7 +32,7 @@ oversight of what is 'running' in your program.
 - Objects can be registered at any time and on any thread.
 - Registered objects can be stopped, made dependent on one another,
   have data associated with them, be named etc.
-- Objects that are stopped shutdown their dependencies first.
+- Objects that are stopped shutdown their dependent objects first.
 - Objects can be anything really, no wrappers or protocol impls required.
 
 ## Rationale
