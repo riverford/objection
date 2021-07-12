@@ -11,8 +11,8 @@
          (identical? x (.-x ^IdentityBox o))))
   (hashCode [this]
     (if (some? x)
-      (.hashCode x)
-      (hash nil))))
+      (System/identityHashCode x)
+      0)))
 
 (defn identity-box
   [x]
