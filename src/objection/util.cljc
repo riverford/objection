@@ -9,17 +9,13 @@
      (equals [this o]
        (and (instance? IdentityBox o)
             (identical? x (.-x ^IdentityBox o))))
-     (hashCode [this]
-       (if (some? x)
-         (.hashCode x)
-         (hash nil))))
+     (hashCode [this] (System/identityHashCode nil)))
    :cljs
    (deftype IdentityBox [x]
      IDeref
      (-deref [this] x)
      IEquiv
-     (-equiv [this o] (and (instance? IdentityBox o)
-                           (identical? x (.-x o))))
+     (-equiv [this o] (and (instance? IdentityBox o) (= x (.-x o))))
      IHash
      (-hash [this]
        (hash x))))
