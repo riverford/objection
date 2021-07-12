@@ -465,10 +465,16 @@
   (keys @singleton-registry))
 
 (defmacro defsingleton
-  "Defines a singleton that can be returned via (singleton k), if an instance already exists, it is returned - else the body is run
+  "Defines a singleton named `k` that whose constructor can be called via (singleton k), if an instance already exists, it is returned - else the body is run
   to construct the instance.
 
-  If you would prefer to return an existing instance without the possibility of constructing the instance if it does not exist, use (object k).
+  Define a singleton and its constructor
+
+  (defsingleton ::db (create-db))
+
+  Return with:
+
+  (singleton ::db)
 
   Redefinition of a singleton will stop any existing instances.
 
@@ -576,5 +582,4 @@
 
     (println "Starting a thing")
     (register #?(:cljs (random-uuid)
-                 :clj  (UUID/randomUUID)) {:stopfn (partial println "stopping")
-                                                         :deps [thingy]})))
+                 :clj  (UUID/randomUUID)) {:stopfn (partial println "stopping") :deps [thingy]})))

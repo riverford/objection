@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file. This change
 
 ### Added
 - ClojureScript support! Remember to `:require-macros`/`:include-macros`!
-
+- `with-open` macro that behaves similarly to `clojure.core/with-open`, but supports objection objects.
 ### Changed
 - `defsingleton` now takes an (optional) options map with an optional `:reload?` flag.
 
