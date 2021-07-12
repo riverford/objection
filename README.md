@@ -8,8 +8,8 @@ as connections, connection pools, threads, thread pools, servers, processes etc.
 ## Rationale
 
 Certain objects in most programs have global implications that are not managed by the garbage collector. They often have lifecycles, acquire
-resources or have side-effects just by being 'active' (e.g a thread). They are often dependent on one another, and those dependencies
-are often implicit and the managment of clean shutdowns is often hand-rolled.
+resources or have side effects just by being 'active' (e.g a thread). They are often dependent on one another, and those dependencies
+are often implicit, and the management of clean shutdowns is often hand-rolled.
 
 In concurrent scenarios all this becomes even more difficult, particularly in programs where such objects are being spawned/shutdown at runtime
 on multiple threads.
@@ -29,7 +29,7 @@ One thing that is particularily nice about both integrant and component is the d
 
 ## Installation
 
-`[riverford/objection "0.1.0"]`
+`[riverford/objection "0.1.3"]`
 
 ## Usage
 
