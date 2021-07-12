@@ -15,8 +15,6 @@
   (:refer-clojure :exclude [alias])
   (:import (java.util UUID)
            (java.lang AutoCloseable)
-           (java.util.concurrent ConcurrentHashMap)
-           (clojure.lang IDeref IFn)
            (java.util.concurrent.locks ReentrantLock Lock)))
 
 ;; Used sparingly when granular locks would be problematic, such as on depend calls.
