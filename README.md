@@ -59,7 +59,7 @@ One thing that is particularily nice about both integrant and component is the d
 
 ## Installation
 
-`[riverford/objection "0.1.1"]`
+`[riverford/objection "0.1.3"]`
 
 ## Usage
 
