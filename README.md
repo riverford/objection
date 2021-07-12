@@ -32,7 +32,7 @@ oversight of what is 'running' in your program.
 - Objects can be registered at any time and on any thread.
 - Registered objects can be stopped, made dependent on one another,
   have data associated with them, be named etc.
-- Objects that are stopped shutdown their dependencies first.
+- Objects that are stopped shutdown their dependent objects first.
 - Objects can be anything really, no wrappers or protocol impls required.
 
 ## Rationale
@@ -79,8 +79,8 @@ You can register an object with `register`, it returns the object passed as-is.
      (obj/register 
      { ;; all optional
        :name (str "Jetty Server on port " port) 
-       :alias [:jetty-server 8080]
-       :data {:handler handler :port 8080}
+       :alias [:jetty-server port]
+       :data {:handler handler :port port}
        ;; optional, but wise! 
        :stopfn (fn [server] (.stop server))})))
 
